@@ -1105,11 +1105,13 @@ static int cover_store(int i, const unsigned char *img, int n) // a JPG / PNG ->
 }
 
 // OPL's art (README "ART"): ART/<SLUS_209.46>_COV.jpg|png for games, ART/<ELF file>_COV.png for apps, in the root of
-// the launcher's device or of the game's source; turned into the .c16 pair once, before any download
+// the launcher's device or of the game's source, or for the server's games its catalog's GET /art/ (#19: the art
+// lives next to the games); turned into the .c16 pair once, before any download. Loader thread: the network's owner
 static void art_import(void)
 {
 	char path[300], name[80];
-	int got = 0;
+	int got = 0, max = 1 << 20;
+	char *net = NULL; // the server's answers
 	snprintf(path, sizeof(path), "%s/covers", homedev);
 	mkdir(path, 0777);
 	for (int i = 1; i < ncv; i++) {
@@ -1127,6 +1129,19 @@ static void art_import(void)
 				snprintf(path, sizeof(path), "%s/ART/%s_COV.%s", roots[r], name, e ? "jpg" : "png");
 				f = fopen(path, "rb");
 			}
+		if (!f && on_catalog(i) && (net || (net = malloc(max)))) { // the server's ART/ (name URL-quoted for apps)
+			int st = 0, body, len;
+			for (int e = 0; e < 2 && st != 200; e++) {
+				snprintf(path, sizeof(path), "/art/%s_COV.%s", name, e ? "jpg" : "png");
+				st = http_get(ini_get(&cfg, "juegos", "servidor", ""), 18290, path, net, max, &body, &len);
+			}
+			if (st == 200) {
+				int ok = cover_store(i, (unsigned char *)net + body, len);
+				got += ok;
+				if (!ok) printf("server %s: not a cover OPL art could make\n", path);
+			}
+			continue;
+		}
 		if (!f) continue;
 		fseek(f, 0, SEEK_END);
 		long n = ftell(f);
@@ -1137,6 +1152,7 @@ static void art_import(void)
 		got += ok;
 		if (!ok) printf("%s: not a cover OPL art could make\n", path);
 	}
+	free(net);
 	printf("art: %d covers from OPL's ART/\n", got);
 }
 

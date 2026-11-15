@@ -8,6 +8,8 @@ GET  /catalog        one line per ISO under <root>/DVD and <root>/CD, tab-separa
                      Then the apps under <root>/APPS, OPL layout (a loose .elf, or a folder with title.cfg "title=" and
                      "boot="): path APPS/<URL-quoted path under APPS>, serial and hash "-".
 GET  /app/<quoted path>  the app's ELF (the launcher downloads it to its USB and runs it)
+GET  /art/<quoted name>  <root>/ART/<name>, OPL's art next to the games (the launcher asks for <SERIAL>_COV.png|jpg
+                     and <ELF>_COV.png|jpg of the server's games and apps that have no cover yet)
 POST /vmc/<name>     creates <root>/VMC/<name>.bin (empty 8 MB card, the launcher's format) if missing.
 GET  /vmc/<name>/list               the card's root, one "name<TAB>mode<TAB>modified hex" line per entry
 GET  /vmc/<name>/file/<dir>/<file>  one file of a save (the launcher's save icon, phase 20)
@@ -71,6 +73,13 @@ class Catalog:
         if rel not in {a for a, _ in self.apps()}:
             return 404, b""
         return 200, open(os.path.join(self.root, "APPS", rel), "rb").read()
+
+    def art_get(self, path):  # (status, bytes) for GET /art/<quoted name>: one file of <root>/ART, no subfolders
+        name = unquote(path[len("/art/"):])
+        p = os.path.join(self.root, "ART", name)
+        if "/" in name or "\\" in name or name.startswith(".") or not os.path.isfile(p):
+            return 404, b""
+        return 200, open(p, "rb").read()
 
     def text(self):
         out = []
@@ -164,6 +173,8 @@ def main():
                 self.send(200, cat.text().encode())
             elif self.path.startswith("/app/"):
                 self.send(*cat.app_get(self.path))
+            elif self.path.startswith("/art/"):
+                self.send(*cat.art_get(self.path))
             else:
                 self.send(*cat.vmc_get(self.path))
 
