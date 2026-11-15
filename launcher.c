@@ -102,8 +102,9 @@ static const char *kind_label(int i)
 
 // views (phase 10): the one shown, restored from estado.ini, which the icon thread rewrites when state_dirty is set
 enum { V_CAROUSEL, V_GRID, V_LIST, V_N };
-static const char *const view_names[2][V_N] = {{"CARRUSEL", "CUADRÍCULA", "LISTA"}, {"CAROUSEL", "GRID", "LIST"}};
-#define view_name view_names[lang_en] // phase 18
+static const char *const view_names[LANG_N][V_N] = {{"CARRUSEL", "CUADRÍCULA", "LISTA"}, {"CAROUSEL", "GRID", "LIST"},
+                                                    {"CARROSSEL", "GRADE", "LISTA"}};
+#define view_name view_names[lang] // phase 18
 static const char *view_key[V_N] = {"carrusel", "cuadricula", "lista"};
 static const int view_icon[V_N] = {UI_CAROUSEL_18, UI_GRID_18, UI_LIST_18};
 static int view;
@@ -800,9 +801,9 @@ static void disc_thread(void *arg)
 
 // ---- config (phase 7): mass0:/nuld/config.ini, created from this template when missing; per-game options in
 // juegos.ini, one section per dash serial with only the keys that differ from the defaults ----
-static const char *const config_template[2] = {
+static const char *const config_template[LANG_N] = {
 	"; NULD - configuración, se lee al arrancar\n" // the first line names the language (phase 18)
-	"\n[ui]\n; idioma de la interfaz y de estos comentarios: es = español, en = inglés (english)\nidioma = es\n"
+	"\n[ui]\n; idioma de la interfaz y de estos comentarios: es = español, en = inglés (english), pt = portugués (português)\nidioma = es\n"
 	"\n[juegos]\n; dónde buscar juegos de PS2 (carpetas DVD y CD), separados por comas: usb, hdd, mx4sio, ilink, mmce,\n"
 	"; udpbd, udpfs. hdd = disco interno exFAT, o APA con particiones de HD Loader. udpbd usa la IP fija de [red];\n"
 	"; udpfs, el servidor de abajo. mx4sio y mmce no van juntos. Configuración, portadas, Neutrino, POPS\n"
@@ -837,7 +838,7 @@ static const char *const config_template[2] = {
 	"; unidos con +; vacio = desactivado\n"
 	"menu = L1+L2+R1+R2+START+SELECT\nreiniciar =\napagar = L1+L2+R1+R2+L3+R3\n",
 	"; NULD - configuration, read at boot\n"
-	"\n[ui]\n; language of the interface and of these comments: es = Spanish (español), en = English\nidioma = en\n"
+	"\n[ui]\n; language of the interface and of these comments: es = Spanish (español), en = English, pt = Portuguese (português)\nidioma = en\n"
 	"\n[juegos]\n; where to look for PS2 games (DVD and CD folders), comma-separated: usb, hdd, mx4sio, ilink, mmce,\n"
 	"; udpbd, udpfs. hdd = internal exFAT disk, or APA with HD Loader partitions. udpbd uses the fixed IP of [red];\n"
 	"; udpfs, the server below. mx4sio and mmce do not go together. Settings, covers, Neutrino, POPS\n"
@@ -870,12 +871,49 @@ static const char *const config_template[2] = {
 	"; its autoboot points to mc?:/BOOT/NULD.ELF (the launcher installs it).\n"
 	"; buttons: L1 L2 R1 R2 L3 R3 START SELECT ARRIBA ABAJO IZQUIERDA DERECHA TRIANGULO CIRCULO X CUADRADO\n"
 	"; (up down left right triangle circle x square), joined with +; empty = off\n"
+	"menu = L1+L2+R1+R2+START+SELECT\nreiniciar =\napagar = L1+L2+R1+R2+L3+R3\n",
+	"; NULD - configuração, lida ao iniciar\n"
+	"\n[ui]\n; idioma da interface e destes comentários: es = espanhol (español), en = inglês (english), pt = português\nidioma = pt\n"
+	"\n[juegos]\n; onde procurar jogos de PS2 (pastas DVD e CD), separados por vírgulas: usb, hdd, mx4sio, ilink, mmce,\n"
+	"; udpbd, udpfs. hdd = disco interno exFAT, ou APA com partições do HD Loader. udpbd usa o IP fixo de [red];\n"
+	"; udpfs, o servidor abaixo. mx4sio e mmce não funcionam juntos. Configuração, capas, Neutrino, POPS\n"
+	"; e APPS ficam na USB.\norigen = usb\n"
+	"; udpfs: IP do servidor de jogos com nuld_catalog (dá a lista; capas e conquistas continuam). Vazio = qualquer\n"
+	"; servidor udpfs da rede (Server2PS2...), com o IP fixo de [red], sem capas nem conquistas pela rede\nservidor =\n"
+	"\n[memorycard]\n; memory card dos jogos de PS2: juego = um virtual por jogo (VMC/<serial>.bin no mesmo\n"
+	"; dispositivo, criado ao jogar), compartida = um virtual para todos (VMC/NULD.bin), fisica = o do slot 1.\n"
+	"; Cada jogo pode mudar com triângulo. O HD Loader só aceita o físico; um MMCE muda sozinho para o do jogo.\n"
+	"modo = juego\n"
+	"\n[video]\n; modo de vídeo dos jogos: nativo, 480p ou 1080i (cada jogo pode mudar com triângulo)\nmodo = 480p\n"
+	"; tela do menu: 720p, ou 480i para uma TV CRT (com 480i os jogos rodam em nativo, exceto os que você mudar\n"
+	"; com triângulo). L2+R2 juntos trocam e salvam aqui, caso não apareça nada\npantalla = 720p\n"
+	"\n[sonido]\n; volume dos sons do menu, 0-100\nvolumen = 100\n"
+	"\n[red]\n; ip = dhcp, ou um IP fixo com sua mascara (máscara), puerta (gateway) e dns; dns também vale com dhcp (ex. 1.1.1.1)\nip = dhcp\nmascara = 255.255.255.0\n"
+	"puerta =\ndns =\n"
+	"\n[portadas]\n; si = baixar da internet (github xlenore/ps2-covers) as capas que faltam, com o cabo de rede conectado\n"
+	"descargar = si\n"
+	"\n[actualizaciones]\n; si = ao iniciar, com o cabo de rede, ver se há uma versão nova do NULD (instala-se com START)\n"
+	"buscar = si\n"
+	"\n[logros]\n; RetroAchievements: si = perguntar ao cliente xeRAbora da casa se o jogo tem conquistas (com o cabo\n"
+	"; de rede conectado), no = sem conquistas\nactivos = si\n"
+	"; IP do cliente; vazio = procurá-lo na rede\nservidor =\n"
+	"\n[jellyfin]\n; servidor Jellyfin da casa para ver filmes (http://IP:8096), com seu usuario (usuário) e clave (senha);\n"
+	"; vazio = sem Jellyfin\nservidor =\nusuario =\nclave =\n"
+	"; legendas (texto, não gravadas no vídeo): idiomas em ordem de preferência (por, spa, eng...), no = sem legendas;\n"
+	"; durante o vídeo, quadrado troca a faixa\nsubtitulos = por\n"
+	"\n[igr]\n; de dentro de um jogo (Neutrino do NULD): menu abre o menu sobre o jogo pausado; reiniciar e apagar\n"
+	"; (desligar) agem na hora. Reiniciar inicia o console como ao ligá-lo: o FMCB abre o NULD de novo se a sua\n"
+	"; inicialização automática aponta para mc?:/BOOT/NULD.ELF (o launcher a instala).\n"
+	"; botões: L1 L2 R1 R2 L3 R3 START SELECT ARRIBA ABAJO IZQUIERDA DERECHA TRIANGULO CIRCULO X CUADRADO\n"
+	"; (cima baixo esquerda direita triângulo círculo x quadrado), unidos com +; vazio = desativado\n"
 	"menu = L1+L2+R1+R2+START+SELECT\nreiniciar =\napagar = L1+L2+R1+R2+L3+R3\n"};
 static ini cfg, games;
 static volatile int cfg_volume = 100;
 static const char *src_why; // the first source that did not come up (toast after the splash)
 static int ra_on;           // [logros] activos (phase 16)
-int lang_en;                // [ui] idioma = en (phase 18, lang.h)
+int lang;                   // [ui] idioma: LANG_ES / EN / PT (phase 18, lang.h)
+static const char *const lang_key[LANG_N] = {"es", "en", "pt"};
+static int lang_of(const char *s) { return !strcasecmp(s, "en") ? LANG_EN : !strcasecmp(s, "pt") ? LANG_PT : LANG_ES; }
 static int w_first;         // no config.ini at boot: the setup wizard opens by itself (#15)
 static int crt;             // [video] pantalla = 480i: menu in 480i / 576i, games native by default
 
@@ -895,7 +933,7 @@ static void load_config(void) // loader thread, before the splash sound
 		if (f) fputs(config_template[0], f), fclose(f);
 		ini_parse(&cfg, config_template[0]);
 	}
-	lang_en = !strcasecmp(ini_get(&cfg, "ui", "idioma", "es"), "en"); // phase 18: first, the rest may show text
+	lang = lang_of(ini_get(&cfg, "ui", "idioma", "es")); // phase 18: first, the rest may show text
 	// phase 18: the comments follow idioma. A file NULD (or ORBIT, until v1.1) wrote (its first line names the
 	// language) in the other language is written again from that language's template with every value kept
 	// (ini_render); a file the user wrote from scratch is left alone
@@ -903,14 +941,15 @@ static void load_config(void) // loader thread, before the splash sound
 	FILE *cf = fopen(CONFIG, "rb");
 	if (cf) fgets(first, sizeof(first), cf), fclose(cf);
 	const char *body = first + (!strncmp(first, "; NULD - ", 9) ? 9 : !strncmp(first, "; ORBIT - ", 10) ? 10 : 0);
-	int file_en = body > first && !strncmp(body, "configuration", 13), file_es = body > first && !strncmp(body, "configuraci", 11);
-	if ((file_en && !lang_en) || (file_es && lang_en)) {
+	int file = body == first ? -1 : !strncmp(body, "configuration", 13) ? LANG_EN : !strncmp(body, "configuraci", 11) ? LANG_ES :
+	           !strncmp(body, "configuração", 13) ? LANG_PT : -1;
+	if (file >= 0 && file != lang) {
 		static char out[16384];
-		int n = ini_render(config_template[lang_en], &cfg, out, sizeof(out));
+		int n = ini_render(config_template[lang], &cfg, out, sizeof(out));
 		if (n > 0 && (cf = fopen(CONFIG, "wb"))) {
 			int ok = fwrite(out, 1, n, cf) == (size_t)n;
 			ok &= fclose(cf) == 0;
-			printf("config.ini rewritten in %s: %s\n", lang_en ? "English" : "Spanish", ok ? "ok" : "FAILED");
+			printf("config.ini rewritten in %s: %s\n", lang_key[lang], ok ? "ok" : "FAILED");
 		}
 	}
 	int v = atoi(ini_get(&cfg, "sonido", "volumen", "100"));
@@ -932,19 +971,23 @@ static void load_config(void) // loader thread, before the splash sound
 
 // video: 0 = default (config), 1 nativo, 2 480p (-gsm=fp2), 3 1080i (-gsm=1080ix2); Neutrino README for -gsm / -gc
 static const char *vid_key[4] = {NULL, "nativo", "480p", "1080i"};
-static const char *const vid_labels[2][4] = {{"Predeterminado", "Nativo", "480p", "1080i"}, {"Default", "Native", "480p", "1080i"}};
-#define vid_label vid_labels[lang_en]
+static const char *const vid_labels[LANG_N][4] = {{"Predeterminado", "Nativo", "480p", "1080i"}, {"Default", "Native", "480p", "1080i"},
+                                                 {"Padrão", "Nativo", "480p", "1080i"}};
+#define vid_label vid_labels[lang]
 static const char gc_modes[] = "02357";
-static const char *const gc_name_l[2][5] = {{"Lectura rápida (0)", "Lectura síncrona (2)", "Sin hooks de syscalls (3)",
-                                             "Emular DVD-DL (5)", "Corregir buffer overrun (7)"},
-                                            {"Fast reads (0)", "Synchronous reads (2)", "No syscall hooks (3)",
-                                             "Emulate DVD-DL (5)", "Fix buffer overrun (7)"}};
-#define gc_names gc_name_l[lang_en]
+static const char *const gc_name_l[LANG_N][5] = {{"Lectura rápida (0)", "Lectura síncrona (2)", "Sin hooks de syscalls (3)",
+                                                  "Emular DVD-DL (5)", "Corregir buffer overrun (7)"},
+                                                 {"Fast reads (0)", "Synchronous reads (2)", "No syscall hooks (3)",
+                                                  "Emulate DVD-DL (5)", "Fix buffer overrun (7)"},
+                                                 {"Leitura rápida (0)", "Leitura síncrona (2)", "Sem hooks de syscalls (3)",
+                                                  "Emular DVD-DL (5)", "Corrigir buffer overrun (7)"}};
+#define gc_names gc_name_l[lang]
 enum { OPT_VIDEO, OPT_COMPAT, OPT_MC, OPT_GC, OPT_ROWS = OPT_GC + 5 };
 static const char *mc_key[MC_N] = {NULL, "juego", "compartida", "fisica"};
-static const char *const mc_labels[2][MC_N] = {{"Predeterminada", "Virtual del juego", "Virtual compartida", "Física (ranura 1)"},
-                                              {"Default", "Per-game virtual", "Shared virtual", "Physical (slot 1)"}};
-#define mc_label mc_labels[lang_en]
+static const char *const mc_labels[LANG_N][MC_N] = {{"Predeterminada", "Virtual del juego", "Virtual compartida", "Física (ranura 1)"},
+                                                   {"Default", "Per-game virtual", "Shared virtual", "Physical (slot 1)"},
+                                                   {"Padrão", "Virtual do jogo", "Virtual compartilhado", "Físico (slot 1)"}};
+#define mc_label mc_labels[lang]
 
 static int vid_index(const char *s)
 {
@@ -1010,8 +1053,8 @@ static void opt_value(int i, int row, char *out, int n)
 		else snprintf(out, n, L("Predet. (%s)", "Default (%s)"), mc_label[game_mc(i)]);
 	} else if (row == OPT_COMPAT) {
 		if (game_compat(i)) snprintf(out, n, "%d", game_compat(i));
-		else snprintf(out, n, "No");
-	} else snprintf(out, n, "%s", game_gc(i, row - OPT_GC) ? L("Sí", "Yes") : "No");
+		else snprintf(out, n, "%s", L("No", "No"));
+	} else snprintf(out, n, "%s", game_gc(i, row - OPT_GC) ? L("Sí", "Yes") : L("No", "No"));
 }
 
 // ---- sound: tools/sfx.py WAVs -> SPU2 ADPCM (adpenc, Makefile), played on free SPU2 voices by audsrv ----
@@ -1594,8 +1637,9 @@ static unsigned char wave[MAXC]; // frames before a cover starts moving after a 
 static int gtop, ltop;           // first grid row / first list row on screen (targets)
 // filters (phase 11, L1/R1): views lay out positions, not indices; pos[i] < 0 = hidden (fades where it is)
 enum { F_ALL, F_PS2, F_PS1, F_APP, F_N };
-static const char *const filter_names[2][F_N] = {{"TODO", "PS2", "PS1", "APPS"}, {"ALL", "PS2", "PS1", "APPS"}};
-#define filter_name filter_names[lang_en]
+static const char *const filter_names[LANG_N][F_N] = {{"TODO", "PS2", "PS1", "APPS"}, {"ALL", "PS2", "PS1", "APPS"},
+                                                     {"TUDO", "PS2", "PS1", "APPS"}};
+#define filter_name filter_names[lang]
 static int filter, pos[MAXC], order[MAXC], nord;
 
 static int shown_in(int i, int fl)
@@ -1743,7 +1787,7 @@ static void options_panel(int i, int row) // △ menu: the game's Neutrino optio
 			ry += 34;
 		}
 		if (r == row) sel_row(x + 12, ry, w - 24, 40);
-		const char *label = r == OPT_VIDEO ? "Video" : r == OPT_COMPAT ? L("Compatibilidad de video", "Video compatibility") :
+		const char *label = r == OPT_VIDEO ? L("Video", "Video") : r == OPT_COMPAT ? L("Compatibilidad de video", "Video compatibility") :
 		                    r == OPT_MC ? "Memory card" : gc_names[r - OPT_GC];
 		gfx_text(&gfx_font_ui, x + 28, ry + 8, label, r == row ? TEXT : TEXT2);
 		opt_value(i, r, a, sizeof(a));
@@ -1762,6 +1806,7 @@ static int w_cur; // the source checkbox under the cursor; w_val[W_SRC] is the m
 static const char *const w_mcm[3] = {"juego", "compartida", "fisica"}, *const w_vid[3] = {"nativo", "480p", "1080i"};
 static const char *const w_lk[] = {"Auto", "R1", "L1", "R2", "L2", "Triangle", "Circle", "Square", "Cross", "Start", "Select"};
 static const char *const w_lk_es[] = {"Auto", "R1", "L1", "R2", "L2", "Triángulo", "Círculo", "Cuadrado", "X", "Start", "Select"};
+static const char *const w_lk_pt[] = {"Auto", "R1", "L1", "R2", "L2", "Triângulo", "Círculo", "Quadrado", "X", "Start", "Select"};
 #define W_NLK 11 // w_val[W_FMCB]: 0 no change, 1 autoboot, 2..W_NLK a button, W_NLK + 1 an item in FMCB's menu
 #define W_STUB "mc?:/BOOT/NULD.ELF"
 #define FMCB_ROOM 1024
@@ -1783,7 +1828,7 @@ static void wiz_open(void)
 {
 	const char *o = ini_get(&cfg, "juegos", "origen", "usb"), *ip = ini_get(&cfg, "red", "ip", "dhcp");
 	memset(w_val, 0, sizeof(w_val));
-	w_val[W_LANG] = lang_en, w_val[W_SRC] = src_mask(o), w_val[W_VIDEO] = 1, w_val[W_CARD] = mcn[0] >= 0 ? 0 : mcn[1] >= 0 ? 1 : -1;
+	w_val[W_LANG] = lang, w_val[W_SRC] = src_mask(o), w_val[W_VIDEO] = 1, w_val[W_CARD] = mcn[0] >= 0 ? 0 : mcn[1] >= 0 ? 1 : -1;
 	if (!w_val[W_SRC]) w_val[W_SRC] = 1u << SRC_USB;
 	w_cur = 0;
 	for (int k = 0; k < 3; k++) {
@@ -1799,7 +1844,7 @@ static void wiz_open(void)
 static void wiz_save(void) // icon thread
 {
 	static char out[16384];
-	ini_set(&cfg, "ui", "idioma", w_val[W_LANG] ? "en" : "es");
+	ini_set(&cfg, "ui", "idioma", lang_key[w_val[W_LANG]]);
 	char list[64] = ""; // hdd also covers HD Loader disks (src_mask)
 	for (int k = 0; k < W_NCHIP; k++)
 		if (w_val[W_SRC] & 1u << w_chip[k]) snprintf(list + strlen(list), sizeof(list) - strlen(list), "%s%s", *list ? ", " : "", src_key[(int)w_chip[k]]);
@@ -1897,7 +1942,7 @@ static void wiz_value(int r, char *a, int n) // the row's choice in words
 	int v = w_val[r], fp = w_fmcb_card();
 	char cur[64] = "";
 	switch (r) {
-	case W_LANG: snprintf(a, n, "%s", v ? "English" : "Español"); break;
+	case W_LANG: snprintf(a, n, "%s", v == LANG_EN ? "English" : v == LANG_PT ? "Português" : "Español"); break;
 	case W_MC: snprintf(a, n, "%s", v == 0 ? L("Virtual por juego", "Per-game virtual") : v == 1 ? L("Virtual compartida", "Shared virtual") : L("Física", "Physical")); break;
 	case W_VIDEO: snprintf(a, n, "%s", v == 0 ? L("Nativo", "Native") : w_vid[v]); break;
 	case W_NET: snprintf(a, n, "%s", v ? w_ip : "DHCP"); break;
@@ -1907,7 +1952,7 @@ static void wiz_value(int r, char *a, int n) // the row's choice in words
 		else if (fp < 0 || w_val[W_CARD] < 0) snprintf(a, n, L("FreeMcBoot no encontrado", "FreeMcBoot not found"));
 		else if (!v) snprintf(a, n, L("Sin cambios (auto: %s)", "No change (auto: %s)"), cnf_get(fmcb_txt[fp], "LK_Auto_E1", cur, sizeof(cur)) ? cur : "-");
 		else if (v == 1) snprintf(a, n, L("Autoarranque", "Autoboot"));
-		else if (v <= W_NLK) snprintf(a, n, L("Botón %s", "Button %s"), lang_en ? w_lk[v - 1] : w_lk_es[v - 1]);
+		else if (v <= W_NLK) snprintf(a, n, L("Botón %s", "Button %s"), (lang == LANG_EN ? w_lk : lang == LANG_PT ? w_lk_pt : w_lk_es)[v - 1]);
 		else snprintf(a, n, L("Entrada en el menú de FMCB", "Item in FMCB's menu"));
 		break;
 	case W_UPD: snprintf(a, n, L("Actualizar NULD a %s", "Update NULD to %s"), upd.version); break;
@@ -1918,7 +1963,7 @@ static void wiz_value(int r, char *a, int n) // the row's choice in words
 static void wiz_change(int d) // left / right on the selected row
 {
 	int r = wiz, *v = &w_val[r];
-	if (r == W_LANG) *v = !*v, lang_en = *v; // the panel itself switches language at once
+	if (r == W_LANG) *v = (*v + d + LANG_N) % LANG_N, lang = *v; // the panel itself switches language at once
 	else if (r == W_SRC) w_cur = w_cur + d < 0 ? 0 : w_cur + d >= W_NCHIP ? W_NCHIP - 1 : w_cur + d; // the cursor
 	else if (r == W_MC || r == W_VIDEO) *v = (*v + d + 3) % 3;
 	else if (r == W_NET) *v = *w_ip ? !*v : 0;
@@ -1972,15 +2017,16 @@ static void wiz_panel(void) // design: the △ options panel
 		}
 		return;
 	}
-	static const char *const lab[2][W_ROWS] = {
+	static const char *const lab[LANG_N][W_ROWS] = {
 		{"", "Idioma", "Juegos desde", "Memory card", "Vídeo", "Red", "Arrancador en", "FreeMcBoot", ""},
-		{"", "Language", "Games from", "Memory card", "Video", "Network", "Boot stub on", "FreeMcBoot", ""}};
+		{"", "Language", "Games from", "Memory card", "Video", "Network", "Boot stub on", "FreeMcBoot", ""},
+		{"", "Idioma", "Jogos de", "Memory card", "Vídeo", "Rede", "Inicializador em", "FreeMcBoot", ""}};
 	for (int r = r0; r < W_ROWS; r++, ry += 46) {
 		if (r == wiz) sel_row(x + 12, ry, w - 24, 40);
-		if (r == W_SRC) { gfx_text(&gfx_font_ui, x + 28, ry + 8, lab[lang_en][r], r == wiz ? TEXT : TEXT2), wiz_chips(x + w - 24, ry, r == wiz); continue; }
+		if (r == W_SRC) { gfx_text(&gfx_font_ui, x + 28, ry + 8, lab[lang][r], r == wiz ? TEXT : TEXT2), wiz_chips(x + w - 24, ry, r == wiz); continue; }
 		wiz_value(r, a, sizeof(a));
 		if (r == W_SAVE || r == W_UPD) { gfx_text(&gfx_font_ui, x + (w - gfx_text_width(&gfx_font_ui, a)) / 2, ry + 8, a, r == wiz ? TEXT : ACID); continue; }
-		gfx_text(&gfx_font_ui, x + 28, ry + 8, lab[lang_en][r], r == wiz ? TEXT : TEXT2);
+		gfx_text(&gfx_font_ui, x + 28, ry + 8, lab[lang][r], r == wiz ? TEXT : TEXT2);
 		value_tag(x + w - 24, ry, a, r == wiz, 1, 1);
 	}
 	if (wiz == W_FMCB && w_val[W_FMCB] > 1 && w_val[W_FMCB] <= W_NLK && w_fmcb_card() >= 0) { // what that button runs now
@@ -2421,7 +2467,7 @@ static void launch(int i) // per kind (phase 11): Neutrino, POPStarter, an app E
 	if (neutrino_igr && (igr_exit || (neutrino_menu && igr_menu)))
 		argv[argc++] = "-igrexit=rom0:OSDSYS"; // the reboot: FMCB comes up from the card and autoboots NULD
 	if (neutrino_igr && igr_off) snprintf(igr[1], sizeof(igr[1]), "-igroff=0x%04x", igr_off), argv[argc++] = igr[1];
-	if (neutrino_lang && neutrino_menu && igr_menu && lang_en) argv[argc++] = "-igrlang=en"; // phase 18
+	if (neutrino_lang && neutrino_menu && igr_menu && lang) argv[argc++] = lang == LANG_EN ? "-igrlang=en" : "-igrlang=pt"; // phase 18
 	if (ra) argv[argc++] = "-cfg=ra", argv[argc++] = ra_arg; // phase 16b: the achievements agent and its watch list
 	// HD Loader needs Neutrino's own load stage (hdlfs; nhddl neutrino.c); so do nuld games, whose network stack is
 	// Neutrino's own (the launcher's lwIP is shut down, phase 17)
@@ -2517,7 +2563,7 @@ int main(int argc, char *argv[])
 			gfx_crt(crt ^= 1);
 			ini_set(&cfg, "video", "pantalla", crt ? "480i" : "720p");
 			static char out[16384];
-			int len = usb ? ini_render(config_template[lang_en], &cfg, out, sizeof(out)) : 0;
+			int len = usb ? ini_render(config_template[lang], &cfg, out, sizeof(out)) : 0;
 			FILE *cf = len > 0 ? fopen(CONFIG, "wb") : NULL;
 			if (cf) fwrite(out, 1, len, cf), fclose(cf);
 		}
@@ -2549,7 +2595,7 @@ int main(int argc, char *argv[])
 				if (pressed & PAD_LEFT) wiz_change(-1), play(S_MOVE, 70);
 				if (pressed & PAD_CROSS && wiz == W_SAVE && w_job == 0) w_job = 2, SignalSema(icon_sema), play(S_CONFIRM, 80);
 				if (pressed & (PAD_CIRCLE | PAD_START)) // closed unsaved: the language as config.ini has it
-					wiz = -1, lang_en = !strcasecmp(ini_get(&cfg, "ui", "idioma", "es"), "en"), play(S_PANEL, 70);
+					wiz = -1, lang = lang_of(ini_get(&cfg, "ui", "idioma", "es")), play(S_PANEL, 70);
 			}
 		} else if (opt >= 0) { // options panel owns the pad until △/○
 			if (pressed & PAD_DOWN) { if (opt < OPT_ROWS - 1) opt++, play(S_MOVE, 70); else play(S_EDGE, 80); }
