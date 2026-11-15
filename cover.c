@@ -1,5 +1,5 @@
-// JPEG cover -> .c16 pixels on the EE (phase 8, roadmap option A): the same path as tools/covers.py. Decode
-// (libjpeg, ps2sdk ports), resize in linear light with PIL's Lanczos (Resample.c: support 3 x the downscale, taps
+// JPEG / PNG cover -> .c16 pixels on the EE (phase 8, roadmap option A): the same path as tools/covers.py. Decode
+// (libjpeg, libpng: ps2sdk ports; PNG for OPL's ART/ folder), resize in linear light with PIL's Lanczos (Resample.c: support 3 x the downscale, taps
 // normalised, horizontal pass first), back to sRGB, then gfx_fs_dither (Floyd-Steinberg to RGB555, as covers.py).
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +7,7 @@
 #include <math.h>
 #include <setjmp.h>
 #include <jpeglib.h>
+#include <png.h>
 #include "gfx.h"
 #include "cover.h"
 
@@ -81,17 +82,54 @@ static void half_px(int x, int y, float *rgb, void *u) // mean of the 2x2 texels
 	}
 }
 
-void cover_half(const unsigned short *big, unsigned short *half) { gfx_fs_dither(half, COVER_HW, COVER_HH, half_px, (void *)big); }
+void cover_half(const unsigned short *big, unsigned short *half, int sq)
+{
+	gfx_fs_dither(half, COVER_HW, COVER_TALL(sq, COVER_HW, COVER_HH), half_px, (void *)big);
+}
 
 struct jerr { struct jpeg_error_mgr mgr; jmp_buf jmp; };
 static void jpeg_fail(j_common_ptr c) { longjmp(((struct jerr *)c->err)->jmp, 1); } // default: exit()
 
-int cover_from_jpeg(const unsigned char *jpg, int n, unsigned short *big, unsigned short *small)
+static int from_rgb(unsigned char *rgb, int w, int h, unsigned short *big, unsigned short *small, int sq) // frees rgb
 {
+	float *lin = malloc(sizeof(float) * w * h * 3);
+	int ok = 0;
+	if (lin) {
+		float lut[256]; // sRGB -> linear (covers.py to_linear)
+		for (int i = 0; i < 256; i++) {
+			float c = i / 255.f;
+			lut[i] = c <= 0.04045f ? c / 12.92f : powf((c + 0.055f) / 1.055f, 2.4f);
+		}
+		for (int i = 0; i < w * h * 3; i++) lin[i] = lut[rgb[i]];
+		free(rgb), rgb = NULL;
+		ok = one_size(lin, w, h, big, COVER_W, COVER_TALL(sq, COVER_W, COVER_H)) &&
+		     one_size(lin, w, h, small, COVER_SW, COVER_TALL(sq, COVER_SW, COVER_SH));
+	}
+	free(rgb);
+	free(lin);
+	return ok;
+}
+
+static int from_png(const unsigned char *data, int n, unsigned short *big, unsigned short *small, int sq)
+{
+	png_image img;
+	memset(&img, 0, sizeof(img));
+	img.version = PNG_IMAGE_VERSION;
+	if (!png_image_begin_read_from_memory(&img, data, n)) return 0;
+	img.format = PNG_FORMAT_RGB;
+	int w = img.width, h = img.height;
+	png_color bg = {0x06, 0x07, 0x0A}; // transparent parts (OPL app art) over NULD_BG
+	unsigned char *rgb = w < 64 || h < 64 || w > 2048 || h > 2048 ? NULL : malloc(PNG_IMAGE_SIZE(img));
+	if (!rgb || !png_image_finish_read(&img, &bg, rgb, 0, NULL)) { png_image_free(&img); free(rgb); return 0; }
+	return from_rgb(rgb, w, h, big, small, sq);
+}
+
+int cover_from_image(const unsigned char *jpg, int n, unsigned short *big, unsigned short *small, int sq)
+{
+	if (n > 8 && !png_sig_cmp(jpg, 0, 8)) return from_png(jpg, n, big, small, sq);
 	struct jpeg_decompress_struct d;
 	struct jerr err;
-	unsigned char *rgb = NULL;
-	float *lin = NULL;
+	unsigned char *volatile rgb = NULL; // volatile: read after the longjmp
 	int ok = 0;
 	d.err = jpeg_std_error(&err.mgr);
 	err.mgr.error_exit = jpeg_fail;
@@ -104,25 +142,16 @@ int cover_from_jpeg(const unsigned char *jpg, int n, unsigned short *big, unsign
 	int w = d.output_width, h = d.output_height;
 	if (w < 64 || h < 64 || w > 2048 || h > 2048) goto done; // ponytail: sanity bounds, xlenore covers are 512x736
 	rgb = malloc(w * h * 3);
-	lin = malloc(sizeof(float) * w * h * 3);
-	if (!rgb || !lin) goto done;
+	if (!rgb) goto done;
 	while ((int)d.output_scanline < h) {
 		unsigned char *row = rgb + d.output_scanline * w * 3;
 		jpeg_read_scanlines(&d, &row, 1);
 	}
 	jpeg_finish_decompress(&d);
-	float lut[256]; // sRGB -> linear (covers.py to_linear)
-	for (int i = 0; i < 256; i++) {
-		float c = i / 255.f;
-		lut[i] = c <= 0.04045f ? c / 12.92f : powf((c + 0.055f) / 1.055f, 2.4f);
-	}
-	for (int i = 0; i < w * h * 3; i++) lin[i] = lut[rgb[i]];
-	free(rgb), rgb = NULL;
-	ok = one_size(lin, w, h, big, COVER_W, COVER_H) && one_size(lin, w, h, small, COVER_SW, COVER_SH);
+	ok = from_rgb(rgb, w, h, big, small, sq), rgb = NULL;
 done:
 	jpeg_destroy_decompress(&d);
 	free(rgb);
-	free(lin);
 	return ok;
 }
 
@@ -138,15 +167,17 @@ int main(int argc, char **argv)
 	for (int i = 0; i < 50 * 60 * 3; i++) assert(fabsf(out[i] - 0.25f) < 1e-5f); // normalised taps keep a flat colour
 	static unsigned short fb[COVER_W * COVER_H], hb[COVER_HW * COVER_HH];
 	for (int i = 0; i < COVER_W * COVER_H; i++) fb[i] = 0x8000 | 7 | 19 << 5 | 30 << 10;
-	cover_half(fb, hb);
-	for (int i = 0; i < COVER_HW * COVER_HH; i++) assert(hb[i] == fb[0]); // a flat cover halves to itself
+	for (int sq = 0; sq < 2; sq++) {
+		cover_half(fb, hb, sq);
+		for (int i = 0; i < COVER_HW * COVER_TALL(sq, COVER_HW, COVER_HH); i++) assert(hb[i] == fb[0]); // flat halves to itself
+	}
 	if (argc == 4) { // cover_selftest <jpg> <ref .c16 256x368> <ref _s.c16>
 		static unsigned char jpg[1 << 20];
 		static unsigned short big[COVER_W * COVER_H], small[COVER_SW * COVER_SH], ref[COVER_W * COVER_H + 8];
 		FILE *f = fopen(argv[1], "rb");
 		int n = fread(jpg, 1, sizeof(jpg), f);
 		fclose(f);
-		assert(cover_from_jpeg(jpg, n, big, small));
+		assert(cover_from_image(jpg, n, big, small, 0));
 		for (int s = 0; s < 2; s++) {
 			unsigned short *p = s ? small : big;
 			int np = s ? COVER_SW * COVER_SH : COVER_W * COVER_H, off = 0, sum = 0;
