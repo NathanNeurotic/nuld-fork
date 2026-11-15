@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Convert cover images (PNG/JPG) to .c16 RGB555 (GS CT16 layout) in two sizes: <name>.c16 256x368 (selected)
-and <name>_s.c16 184x264 (carousel). Spec: openspec cover-art.
+and <name>_s.c16 184x264 (carousel). Spec: openspec cover-art. --square: 256x256 and 184x184, the shape of PS1 games
+(CD case) and apps (APPS/, named after their title) in the launcher.
 
-usage: covers.py IN_DIR OUT_DIR [--no-dither]     |     covers.py --selftest
+usage: covers.py IN_DIR OUT_DIR [--no-dither] [--square]     |     covers.py --selftest
 Resize: Lanczos in linear light (sRGB resizing darkens fine detail). Quantize: Floyd-Steinberg to 5 bits per
 channel (default) or plain rounding. Levels are k*8, k = 0..31, the GS's 5 -> 8 bit expansion (estimate,
 docs/sources.md).
@@ -15,6 +16,7 @@ import numpy as np
 from PIL import Image
 
 SIZES = (((256, 368), ""), ((184, 264), "_s"))  # both keep the 512:736 source aspect within 0.2 %
+SQUARE = (((256, 256), ""), ((184, 184), "_s"))  # PS1 / apps
 
 
 def to_linear(c):
@@ -66,7 +68,7 @@ def selftest():
     b = c16_bytes(np.array([[[1, 2, 3]]], np.int32))
     assert b[:4] == b"C16\0" and struct.unpack("<II", b[4:12]) == (1, 1) and len(b) == 18
     assert struct.unpack("<H", b[16:])[0] == 1 | 2 << 5 | 3 << 10 | 0x8000
-    for size, _ in SIZES:
+    for size, _ in SIZES + SQUARE:
         r = resize(Image.new("RGB", (512, 736), (255, 255, 255)), size)
         assert r.shape == (size[1], size[0], 3) and r.min() > 254.5  # exact size, white stays white
     print("covers selftest ok")
@@ -75,14 +77,14 @@ def selftest():
 def main():
     if sys.argv[1:] == ["--selftest"]:
         return selftest()
-    args = [a for a in sys.argv[1:] if a != "--no-dither"]
+    args = [a for a in sys.argv[1:] if a not in ("--no-dither", "--square")]
     if len(args) != 2:
         sys.exit(__doc__)
     src, dst = Path(args[0]), Path(args[1])
     dst.mkdir(parents=True, exist_ok=True)
     for f in sorted(p for p in src.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg")):
         img = Image.open(f)
-        for size, suffix in SIZES:
+        for size, suffix in SQUARE if "--square" in sys.argv else SIZES:
             (dst / (f.stem + suffix + ".c16")).write_bytes(c16_bytes(quantize(resize(img, size), "--no-dither" not in sys.argv)))
         (dst / (f.stem + "_h.c16")).unlink(missing_ok=True)  # the launcher's grid tile, made again from the new cover
         print(f.name)

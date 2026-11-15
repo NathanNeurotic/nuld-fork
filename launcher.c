@@ -36,7 +36,7 @@
 #include "update.h"
 #include "splash.h"
 
-#define NULD_VERSION "v1.2.11" // tools/make_release.py checks it against the release tag
+#define NULD_VERSION "v1.2.13" // tools/make_release.py checks it against the release tag
 #include "lang.h"
 #include "achievements.h"
 #include "third_party/neutrino-igr/raagent/ra_watch.h"
@@ -85,12 +85,15 @@ typedef struct {
 	char title[64], serial[16], path[160], boot[64]; // boot: disc only, the SYSTEM.CNF BOOT2 path / PS1 file name
 	char hash[33];                                     // RetroAchievements hash: the catalog's (phase 17) or computed
 	char kind, cd, disc, src;                          // cd: PS2 CD media; disc: K_DISC's content (D_*); src: src[]
+	unsigned size;                                     // a server app's ELF bytes (catalog, launch downloads it)
 	void *big, *small, *half;                          // half: grid
 } entry;
 static entry cv[MAXC];
 enum { D_NONE, D_READING, D_PS2, D_PS1, D_OTHER };
 static int is_ps2(int i) { return cv[i].kind == K_PS2 || (cv[i].kind == K_DISC && cv[i].disc == D_PS2); }
 static int is_ps1(int i) { return cv[i].kind == K_PS1 || (cv[i].kind == K_DISC && cv[i].disc == D_PS1); }
+// PS1 (CD case) and apps: square covers, LW x LW / SW x SW / 128x128 (cover.h COVER_TALL); PS2: the DVD case
+static int sq_e(const entry *e) { return e->kind == K_PS1 || e->kind == K_APP || (e->kind == K_DISC && e->disc == D_PS1); }
 static int kind_icon(int i) { return cv[i].kind == K_APP ? UI_CHIP_18 : cv[i].cd || is_ps1(i) ? UI_CD_18 : UI_DVD_18; }
 static const char *kind_label(int i)
 {
@@ -120,10 +123,11 @@ static void home_paths(void)
 	snprintf(LOG_TXT, sizeof(LOG_TXT), "%s/launcher.txt", homedev);
 }
 
-static void *make_half(const void *big) // 128x184 grid tile from the 256x368 cover, in RAM only (phase 10)
+static void *make_half(const void *big, int sq) // 128x184 (128x128) grid tile from the big cover, in RAM only (phase 10)
 {
-	unsigned short *h = memalign(64, COVER_HW * COVER_HH * 2);
-	if (h) cover_half(big, h), SyncDCache(h, h + COVER_HW * COVER_HH);
+	int n = COVER_HW * COVER_TALL(sq, COVER_HW, COVER_HH);
+	unsigned short *h = memalign(64, n * 2);
+	if (h) cover_half(big, h, sq), SyncDCache(h, h + n);
 	return h; // NULL: the grid draws the small cover scaled instead
 }
 static volatile int ncv, stage, done_n, total_n, usb, load_ms, neutrino; // written by the loader thread
@@ -483,22 +487,22 @@ static int has_ext(const char *name, const char *ext)
 	return n > e && !strcasecmp(name + n - e, ext);
 }
 
-static void cover_files(const char *serial, void **big, void **small) // covers/<serial>.c16 + _s.c16, both or none
+static void cover_files(const char *serial, int sq, void **big, void **small) // covers/<serial>.c16 + _s.c16, both or none
 {
 	char path[160];
 	*big = *small = NULL;
 	if (!*serial) return;
 	snprintf(path, sizeof(path), "%s/covers/%s.c16", homedev, serial);
-	*big = load_c16(path, LW, LH);
+	*big = load_c16(path, LW, COVER_TALL(sq, LW, LH));
 	snprintf(path, sizeof(path), "%s/covers/%s_s.c16", homedev, serial);
-	*small = *big ? load_c16(path, SW, SH) : NULL;
+	*small = *big ? load_c16(path, SW, COVER_TALL(sq, SW, SH)) : NULL;
 	if (!*small) free(*big), *big = NULL;
 }
 
 static void load_covers(entry *e) // the disc's: the grid's half from the big one
 {
-	cover_files(e->serial, &e->big, &e->small);
-	e->half = e->big ? make_half(e->big) : NULL;
+	cover_files(e->serial, sq_e(e), &e->big, &e->small);
+	e->half = e->big ? make_half(e->big, sq_e(e)) : NULL;
 }
 
 // ---- covers on demand (#3): the render thread asks for the size it draws, the cover thread reads that file from the
@@ -511,14 +515,14 @@ static int cover_seen[MAXC], frame_n; // render thread: the frame each cover was
 static int cover_sema = -1, cover_lock = -1;
 static int save_c16(const char *serial, const char *suffix, const void *px, unsigned w, unsigned h);
 
-static void *half_file(const char *serial, void **big, void **small) // _h.c16, made from the big one the first time
+static void *half_file(const char *serial, int sq, void **big, void **small) // _h.c16, made from the big one the first time
 {
 	char path[160];
 	snprintf(path, sizeof(path), "%s/covers/%s_h.c16", homedev, serial);
-	void *h = load_c16(path, COVER_HW, COVER_HH);
+	void *h = load_c16(path, COVER_HW, COVER_TALL(sq, COVER_HW, COVER_HH)); // an old-shape one fails here: made again
 	if (h) return h;
-	cover_files(serial, big, small); // read anyway: the caller keeps them too
-	if (*big && (h = make_half(*big))) save_c16(serial, "_h", h, COVER_HW, COVER_HH);
+	cover_files(serial, sq, big, small); // read anyway: the caller keeps them too
+	if (*big && (h = make_half(*big, sq))) save_c16(serial, "_h", h, COVER_HW, COVER_TALL(sq, COVER_HW, COVER_HH));
 	return h;
 }
 
@@ -561,11 +565,12 @@ static void cover_thread(void *arg) // woken by draw_cover
 			void *im[3] = {NULL, NULL, NULL};
 			char path[160];
 			const char *id = *cv[i].serial ? cv[i].serial : cv[i].title; // apps: covers/<title>.c16 (no serial)
-			if (b & 1) im[0] = half_file(id, &im[2], &im[1]);
+			int sq = sq_e(&cv[i]);
+			if (b & 1) im[0] = half_file(id, sq, &im[2], &im[1]);
 			snprintf(path, sizeof(path), "%s/covers/%s_s.c16", homedev, id);
-			if (b & 2 && !im[1]) im[1] = load_c16(path, SW, SH);
+			if (b & 2 && !im[1]) im[1] = load_c16(path, SW, COVER_TALL(sq, SW, SH));
 			snprintf(path, sizeof(path), "%s/covers/%s.c16", homedev, id);
-			if (b & 4 && !im[2]) im[2] = load_c16(path, LW, LH);
+			if (b & 4 && !im[2]) im[2] = load_c16(path, LW, COVER_TALL(sq, LW, LH));
 			cover_set(i, im, b);
 		}
 	}
@@ -650,15 +655,16 @@ static int catalog_load(int s, int n)
 		src_udpfs_ip(NDIR, net_ip()); // the game's ministack: our address now (fixed or the lease)
 		buf[body + len] = 0;
 		while (n < MAXC && catalog_next(&p, &e)) {
-			if (!strcmp(e.serial, "-") || strlen(e.serial) != 11) continue; // as scan_dir: no serial, not listed
+			int app = !strncmp(e.path, "APPS/", 5); // the server's apps: path URL-quoted, size for the download
+			if (!app && (!strcmp(e.serial, "-") || strlen(e.serial) != 11)) continue; // as scan_dir: no serial, not listed
 			entry *c = &cv[n++];
 			memset(c, 0, sizeof(*c));
 			snprintf(c->path, sizeof(c->path), "%s", e.path);
 			snprintf(c->title, sizeof(c->title), "%s", e.title);
-			serial_dash(e.serial, c->serial);
+			if (!app) serial_dash(e.serial, c->serial);
 			if (strlen(e.hash) == 32) snprintf(c->hash, sizeof(c->hash), "%s", e.hash);
-			c->kind = K_PS2, c->cd = !strncmp(e.path, "CD/", 3), c->src = s;
-			done_n++, got++;
+			c->kind = app ? K_APP : K_PS2, c->cd = !strncmp(e.path, "CD/", 3), c->src = s, c->size = e.size;
+			done_n++, total_n++, got++; // the server's games are known only now: the splash's total grows with them
 		}
 	}
 	free(buf);
@@ -678,7 +684,7 @@ static void hdl_add(void *p, const char *part, const char *title, const char *st
 	snprintf(e->title, sizeof(e->title), "%s", *title ? title : part);
 	serial_dash(startup, e->serial);
 	e->kind = K_PS2, e->src = c->s;
-	done_n++;
+	done_n++, total_n++; // as the catalog: not counted beforehand
 }
 
 static int by_title(const void *a, const void *b) // then by source
@@ -1045,15 +1051,22 @@ static void play(int id, int vol) // render thread; vol 0-100
 // resized and dithered on the EE (cover.c), saved as .c16 pairs; after the splash, in the loader thread ----
 #define COVER_HOST "raw.githubusercontent.com"
 #define COVER_PATH "/xlenore/%s/main/covers/default/%s.jpg" // ps2-covers as tools/fetch_covers.py; psx-covers (PS1)
+static const char *cover_id(int i) { return *cv[i].serial ? cv[i].serial : cv[i].title; } // apps: no serial
+static int has_cover(int i) // covers/<id>_s.c16 in this entry's shape
+{
+	char path[128];
+	snprintf(path, sizeof(path), "%s/covers/%s_s.c16", homedev, cover_id(i)); // written last by save_c16
+	FILE *f = fopen(path, "rb");
+	unsigned hdr[4] = {0};
+	if (f) fread(hdr, 16, 1, f), fclose(f);
+	return hdr[2] == (unsigned)COVER_TALL(sq_e(&cv[i]), SW, SH); // not an old PS1 one (184x264, before square covers)
+}
 static int wants_cover(int i) // a PS2 / PS1 game without covers on the USB
 {
-	char path[64];
-	if (!*cv[i].serial || (cv[i].kind != K_PS2 && cv[i].kind != K_PS1)) return 0;
-	snprintf(path, sizeof(path), "%s/covers/%s_s.c16", homedev, cv[i].serial); // written last by save_c16
-	FILE *f = fopen(path, "rb");
-	return f ? fclose(f), 0 : 1;
+	return *cv[i].serial && (cv[i].kind == K_PS2 || cv[i].kind == K_PS1) && !has_cover(i);
 }
 static volatile int dl_state, dl_done, dl_total, dl_got; // state: 0 idle, 1 connecting, 2 downloading, 3 done, NET_ERR_*
+static volatile int ra_launching; // set by launch() (achievements, below): the cover download stops for a server app
 
 static int save_c16(const char *serial, const char *suffix, const void *px, unsigned w, unsigned h)
 {
@@ -1078,6 +1091,71 @@ static int net_ready(void) // loader thread: the network up once, for the covers
 	return r;
 }
 
+static int cover_store(int i, const unsigned char *img, int n) // a JPG / PNG -> the .c16 pair on the USB and on screen
+{
+	int sq = sq_e(&cv[i]), lh = COVER_TALL(sq, LW, LH), sh = COVER_TALL(sq, SW, SH);
+	unsigned short *big = memalign(64, LW * lh * 2), *small = memalign(64, SW * sh * 2);
+	if (!big || !small || !cover_from_image(img, n, big, small, sq)) { free(big), free(small); return 0; }
+	save_c16(cover_id(i), "", big, LW, lh); // shown even if the USB write fails; made again next boot
+	save_c16(cover_id(i), "_s", small, SW, sh);
+	SyncDCache(big, big + LW * lh);
+	SyncDCache(small, small + SW * sh);
+	cover_set(i, (void *[3]){NULL, small, big}, 0); // off screen, cover_evict drops it again
+	return 1;
+}
+
+// OPL's art (README "ART"): ART/<SLUS_209.46>_COV.jpg|png for games, ART/<ELF file>_COV.png for apps, in the root of
+// the launcher's device or of the game's source, or for the server's games its catalog's GET /art/ (#19: the art
+// lives next to the games); turned into the .c16 pair once, before any download. Loader thread: the network's owner
+static void art_import(void)
+{
+	char path[300], name[80];
+	int got = 0, max = 1 << 20;
+	char *net = NULL; // the server's answers
+	snprintf(path, sizeof(path), "%s/covers", homedev);
+	mkdir(path, 0777);
+	for (int i = 1; i < ncv; i++) {
+		if (has_cover(i)) continue;
+		if (*cv[i].serial) // dash form back to OPL's: SLUS-20946 -> SLUS_209.46
+			snprintf(name, sizeof(name), "%.4s_%.3s.%.2s", cv[i].serial, cv[i].serial + 5, cv[i].serial + 8);
+		else if (cv[i].kind == K_APP) // ponytail: a server app's URL-quoted name only matches without spaces
+			snprintf(name, sizeof(name), "%s", strrchr(cv[i].path, '/') + 1);
+		else continue;
+		const char *roots[2] = {homedev, src[(int)cv[i].src].root};
+		FILE *f = NULL;
+		for (int r = 0; r < 2 && !f; r++)
+			for (int e = 0; e < 2 && !f; e++) {
+				if (r && (!strcmp(roots[1], homedev) || src[(int)cv[i].src].type == SRC_HDL || on_catalog(i))) break; // not mounted
+				snprintf(path, sizeof(path), "%s/ART/%s_COV.%s", roots[r], name, e ? "jpg" : "png");
+				f = fopen(path, "rb");
+			}
+		if (!f && on_catalog(i) && (net || (net = malloc(max)))) { // the server's ART/ (name URL-quoted for apps)
+			int st = 0, body, len;
+			for (int e = 0; e < 2 && st != 200; e++) {
+				snprintf(path, sizeof(path), "/art/%s_COV.%s", name, e ? "jpg" : "png");
+				st = http_get(ini_get(&cfg, "juegos", "servidor", ""), 18290, path, net, max, &body, &len);
+			}
+			if (st == 200) {
+				int ok = cover_store(i, (unsigned char *)net + body, len);
+				got += ok;
+				if (!ok) printf("server %s: not a cover OPL art could make\n", path);
+			}
+			continue;
+		}
+		if (!f) continue;
+		fseek(f, 0, SEEK_END);
+		long n = ftell(f);
+		unsigned char *buf = n > 0 && n < (4 << 20) ? malloc(n) : NULL;
+		fseek(f, 0, SEEK_SET);
+		int ok = buf && fread(buf, n, 1, f) == 1 && cover_store(i, buf, n);
+		fclose(f), free(buf);
+		got += ok;
+		if (!ok) printf("%s: not a cover OPL art could make\n", path);
+	}
+	free(net);
+	printf("art: %d covers from OPL's ART/\n", got);
+}
+
 static void download_covers(void)
 {
 	if (strcasecmp(ini_get(&cfg, "portadas", "descargar", "si"), "si")) return;
@@ -1093,7 +1171,7 @@ static void download_covers(void)
 	snprintf(dir, sizeof(dir), "%s/covers", homedev);
 	mkdir(dir, 0777);
 	clock_t c0 = clock();
-	for (int i = 0; buf && i < ncv && dl_state == 2; i++) {
+	for (int i = 0; buf && i < ncv && dl_state == 2 && !ra_launching; i++) { // a server app's launch needs the network
 		if (i == 0 || !wants_cover(i)) continue;
 		char path[96];
 		int body, len;
@@ -1102,15 +1180,7 @@ static void download_covers(void)
 		if (st == NET_ERR_CONNECT && !dl_done) // the first connection right after the lease failed once on the console
 			sleep(2), st = https_get(COVER_HOST, path, buf, max, &body, &len);
 		if (st < 0) { dl_state = st; break; } // network or TLS: the rest would fail the same way
-		unsigned short *big = memalign(64, LW * LH * 2), *small = memalign(64, SW * SH * 2);
-		if (st == 200 && big && small && cover_from_jpeg((unsigned char *)buf + body, len, big, small)) {
-			save_c16(cv[i].serial, "", big, LW, LH); // shown even if the USB write fails; fetched again next boot
-			save_c16(cv[i].serial, "_s", small, SW, SH);
-			SyncDCache(big, big + LW * LH);
-			SyncDCache(small, small + SW * SH);
-			cover_set(i, (void *[3]){NULL, small, big}, 0); // off screen, cover_evict drops it again
-			dl_got++;
-		} else free(big), free(small); // 404: xlenore has no cover for it, the generic one stays
+		if (st == 200 && cover_store(i, (unsigned char *)buf + body, len)) dl_got++; // 404: the generic one stays
 		dl_done++;
 	}
 	free(buf);
@@ -1366,7 +1436,7 @@ static void loader(void *arg) // lower priority than the render thread: runs whi
 	ee_thread_t dt = { .func = disc_thread, .stack = disc_stack, .stack_size = sizeof(disc_stack), .gp_reg = &_gp,
 	                   .initial_priority = 0x40 };
 	if ((disc_tid = CreateThread(&dt)) >= 0) StartThread(disc_tid, NULL);
-	if (usb) download_covers(); // the home screen is already up: covers pop in as they arrive
+	if (usb) art_import(), download_covers(); // the home screen is already up: covers pop in as they arrive
 	int upd_left = usb; // the update check's HTTPS takes seconds: an achievements query waiting goes first
 	if (upd_left && ra_sema < 0) upd_left = 0, update_check();
 	if (ra_sema >= 0) ra_log("ra: worker up, covers state %d", dl_state);
@@ -1409,7 +1479,7 @@ static void splash(int t, float fade)
 	shown += (goal - shown) * 0.08f;
 	if (stage == 0) snprintf(st, sizeof(st), L("Iniciando USB", "Starting USB"));
 	else if (stage == 1) snprintf(st, sizeof(st), L("Leyendo memory cards", "Reading memory cards"));
-	else snprintf(st, sizeof(st), L("Cargando portadas  %02d / %02d", "Loading covers  %02d / %02d"), done_n, total_n);
+	else snprintf(st, sizeof(st), L("Cargando juegos  %02d / %02d", "Loading games  %02d / %02d"), done_n, total_n);
 	splash_msg(st);
 	gfx_begin();
 	splash_draw(t / 60.f);
@@ -1576,15 +1646,15 @@ static box target(int i, int sel)
 	if (pos[i] < 0) { b = shown_box[i]; b.a = 0, b.f = 0; return b; } // filtered out: fades where it is
 	if (view == V_CAROUSEL) { // the phase-3 row at rest: selected 256x368 at x 512, the others 184x264, D apart
 		int di = pos[i] - pos[sel];
-		b.w = di ? SW : LW, b.h = di ? SH : LH, b.a = di ? 0.82f : 1, b.f = !di; // others at 82 % (design)
+		b.w = di ? SW : LW, b.h = COVER_TALL(sq_e(&cv[i]), b.w, di ? SH : LH), b.a = di ? 0.82f : 1, b.f = !di; // others at 82 % (design)
 		b.x = GFX_W / 2 + di * D + (di < 0 ? -E : di > 0 ? E : 0) - b.w / 2, b.y = CY - b.h / 2;
 	} else if (view == V_GRID) {
 		int r = pos[i] / GCOLS - gtop, focus = i == sel;
 		float sc = focus ? 1.12f : 1, ty = GY0 + r * GPY;
-		b.w = COVER_HW * sc, b.h = COVER_HH * sc, b.f = focus;
+		b.w = COVER_HW * sc, b.h = COVER_TALL(sq_e(&cv[i]), COVER_HW, COVER_HH) * sc, b.f = focus;
 		b.x = GX0 + pos[i] % GCOLS * GPX + (COVER_HW - b.w) / 2, b.y = ty + (COVER_HH - b.h) / 2;
 		b.a = (focus ? 1 : 0.82f) * edge_fade(ty, COVER_HH, GY0 - 8, GY0 + GPY + COVER_HH + 8, 60);
-	} else if (i == sel) b.x = LCX, b.y = LCY, b.w = LW, b.h = LH, b.a = 1, b.f = 1;
+	} else if (i == sel) b.x = LCX, b.w = LW, b.h = COVER_TALL(sq_e(&cv[i]), LW, LH), b.y = LCY + (LH - b.h) / 2, b.a = 1, b.f = 1;
 	else b.x = LX, b.y = LY0 + (pos[i] - ltop) * LROW, b.w = 36, b.h = 52; // folded into its row, invisible
 	return b;
 }
@@ -1615,7 +1685,8 @@ static void draw_cover(int i)
 	gfx_alpha((int)(0x80 * b->a));
 	cover_seen[i] = frame_n;
 	void *im[3] = {cv[i].half, cv[i].small, cv[i].big};
-	static const short iw[3] = {COVER_HW, SW, LW}, ih[3] = {COVER_HH, SH, LH};
+	int sq = sq_e(&cv[i]);
+	const short iw[3] = {COVER_HW, SW, LW}, ih[3] = {COVER_TALL(sq, COVER_HW, COVER_HH), COVER_TALL(sq, SW, SH), COVER_TALL(sq, LW, LH)};
 	// the smallest image not below the size: pixel-exact at rest, bilinear moving (no mipmaps: never minify past 2x)
 	int k = w > SW ? 2 : w > COVER_HW ? 1 : 0;
 	if (i && cover_sema >= 0 && !im[k] && !((cover_done[i] | cover_req[i]) & 1 << k))
@@ -2227,6 +2298,29 @@ static void restart_self(void) // the setup wizard saved (#15): start NULD again
 	run_loader(2, argv);
 }
 
+// a server app (catalog APPS/): its ELF over HTTP to <home>/nuld/red.elf, run from there like a USB one. NULL or why not
+// ponytail: only the ELF comes down; an app that reads files next to itself needs to be on the USB
+static const char *app_fetch(int i, char *file, int n)
+{
+	for (int t = 0; t < 500 && (dl_state == 1 || dl_state == 2); t++) usleep(20000); // covers stop (ra_launching)
+	if (dl_state == 1 || dl_state == 2) return L("Aún se descargan portadas: inténtalo otra vez", "Covers still downloading: try again");
+	int body, len, max = cv[i].size + 4096, st = 0;
+	char *buf = cv[i].size ? malloc(max) : NULL, path[180];
+	if (!buf) return L("Sin memoria para descargar la aplicación", "Not enough memory to download the app");
+	snprintf(path, sizeof(path), "/app/%s", cv[i].path + 5);
+	st = http_get(ini_get(&cfg, "juegos", "servidor", ""), 18290, path, buf, max, &body, &len);
+	snprintf(file, n, "%s/%s/red.elf", homedev, home_dir);
+	FILE *f = st == 200 ? fopen(file, "wb") : NULL;
+	int ok = f && fwrite(buf + body, len, 1, f) == 1;
+	if (f) ok &= fclose(f) == 0;
+	free(buf);
+	printf("app %s: HTTP %d, %d bytes to %s%s\n", cv[i].path, st, st == 200 ? len : 0, file, ok ? "" : " FAILED");
+	if (ok) return NULL;
+	static char why[96];
+	return snprintf(why, sizeof(why), st == 200 ? L("No se pudo escribir %s", "Could not write %s") : L("El servidor no dio la aplicación (%s)", "The server did not send the app (%s)"),
+	                st == 200 ? file : net_err(st)), why;
+}
+
 static void launch(int i) // per kind (phase 11): Neutrino, POPStarter, an app ELF, or the BIOS for discs
 {
 	launch_err = NULL;
@@ -2257,6 +2351,8 @@ static void launch(int i) // per kind (phase 11): Neutrino, POPStarter, an app E
 	int ra = 0;
 	if (!ra_busy && neutrino_ra && ra_game_ok(i) && ra_state[i] == RA_SET && ra_on)
 		ra_abort = 0, ra = ra_prepare(i, ra_arg, sizeof(ra_arg)), ra_abort = 1;
+	static char file[200], arg0[200];
+	if (cv[i].kind == K_APP && on_catalog(i) && (launch_err = app_fetch(i, file, sizeof(file)))) return;
 	if (!ra_busy && dl_state != 1 && dl_state != 2) net_down(); // ponytail: a cover download in flight keeps it up
 	// no libcdvd call of the disc thread left half-way under the next program (Neutrino's branch: after its checks)
 	if (cv[i].kind != K_PS2 && disc_tid >= 0) TerminateThread(disc_tid);
@@ -2268,7 +2364,6 @@ static void launch(int i) // per kind (phase 11): Neutrino, POPStarter, an app E
 		LoadExecPS2(cv[i].disc == D_PS2 ? "rom0:PS2LOGO" : "rom0:PS1DRV", cv[i].disc == D_PS2 ? 1 : 2, a);
 		return;
 	}
-	static char file[200], arg0[200];
 	if (cv[i].kind != K_PS2) { // loader argv: the file, then the program's argv
 		char *argv[2] = {file, arg0};
 		if (cv[i].kind == K_PS1) { // POPStarter finds <name>.VCD from an argv[0] of mass:/POPS/XX.<name>.ELF
@@ -2277,7 +2372,10 @@ static void launch(int i) // per kind (phase 11): Neutrino, POPStarter, an app E
 			name[strlen(name) - 4] = 0;                          // without ".VCD"
 			snprintf(file, sizeof(file), "%s", POPSTARTER);
 			snprintf(arg0, sizeof(arg0), "mass:/POPS/XX.%s.ELF", name);
-		} else snprintf(file, sizeof(file), "%s/%s", homedev, cv[i].path), snprintf(arg0, sizeof(arg0), "%s", file);
+		} else {
+			if (!on_catalog(i)) snprintf(file, sizeof(file), "%s/%s", homedev, cv[i].path); // else app_fetch's
+			snprintf(arg0, sizeof(arg0), "%s", file);
+		}
 		printf("launch: %s as %s\n", file, arg0);
 		gfx_shutdown();
 		run_loader(2, argv);

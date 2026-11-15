@@ -5,6 +5,11 @@ GET  /catalog        one line per ISO under <root>/DVD and <root>/CD, tab-separa
                      path  size  serial  hash  title   (serial SLUS_213.76 form, hash = rcheevos rc_hash_ps2,
                      "-" while not hashed yet or unreadable). Answered from the cache, never waiting for a hash:
                      a background thread hashes new or changed ISOs (key: path, size, mtime) with nuld_hash.
+                     Then the apps under <root>/APPS, OPL layout (a loose .elf, or a folder with title.cfg "title=" and
+                     "boot="): path APPS/<URL-quoted path under APPS>, serial and hash "-".
+GET  /app/<quoted path>  the app's ELF (the launcher downloads it to its USB and runs it)
+GET  /art/<quoted name>  <root>/ART/<name>, OPL's art next to the games (the launcher asks for <SERIAL>_COV.png|jpg
+                     and <ELF>_COV.png|jpg of the server's games and apps that have no cover yet)
 POST /vmc/<name>     creates <root>/VMC/<name>.bin (empty 8 MB card, the launcher's format) if missing.
 GET  /vmc/<name>/list               the card's root, one "name<TAB>mode<TAB>modified hex" line per entry
 GET  /vmc/<name>/file/<dir>/<file>  one file of a save (the launcher's save icon, phase 20)
@@ -12,7 +17,7 @@ GET  /vmc/<name>/file/<dir>/<file>  one file of a save (the launcher's save icon
 Runs as a user service on nuld next to udpfs_server.py: tools/nuld_catalog.py --root /srv/data/ps2 --port 18290
 """
 import argparse, json, os, re, subprocess, threading, time
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 OPL_PREFIX = re.compile(r"^[A-Z]{4}_\d{3}\.\d{2}\.")  # "SLUS_209.46.God of War.iso" (OPL naming)
@@ -45,6 +50,37 @@ class Catalog:
                     st = os.stat(os.path.join(self.root, p))
                     yield p, st.st_size, int(st.st_mtime)
 
+    def apps(self):  # (path under APPS, title) per app, as the launcher's load_games reads its USB
+        d = os.path.join(self.root, "APPS")
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            return
+        for n in names:
+            p = os.path.join(d, n)
+            if n.lower().endswith(".elf") and os.path.isfile(p):
+                yield n, title_of(n)
+            elif os.path.isfile(os.path.join(p, "title.cfg")):
+                cfg = {}
+                for line in open(os.path.join(p, "title.cfg"), encoding="utf-8", errors="replace"):
+                    k, _, v = line.partition("=")
+                    cfg[k.strip().lower()] = v.strip()
+                if cfg.get("boot") and os.path.isfile(os.path.join(p, cfg["boot"])):
+                    yield n + "/" + cfg["boot"], cfg.get("title") or n
+
+    def app_get(self, path):  # (status, bytes) for GET /app/<quoted path>: only what apps() lists
+        rel = unquote(path[len("/app/"):])
+        if rel not in {a for a, _ in self.apps()}:
+            return 404, b""
+        return 200, open(os.path.join(self.root, "APPS", rel), "rb").read()
+
+    def art_get(self, path):  # (status, bytes) for GET /art/<quoted name>: one file of <root>/ART, no subfolders
+        name = unquote(path[len("/art/"):])
+        p = os.path.join(self.root, "ART", name)
+        if "/" in name or "\\" in name or name.startswith(".") or not os.path.isfile(p):
+            return 404, b""
+        return 200, open(p, "rb").read()
+
     def text(self):
         out = []
         with self.lock:
@@ -52,6 +88,9 @@ class Catalog:
                 c = self.cache.get(p)
                 serial, h = (c[2], c[3]) if c and c[0] == size and c[1] == mtime else ("-", "-")
                 out.append(f"{p}\t{size}\t{serial}\t{h}\t{title_of(os.path.basename(p))}\n")
+        for a, title in self.apps():
+            size = os.path.getsize(os.path.join(self.root, "APPS", a))
+            out.append(f"APPS/{quote(a)}\t{size}\t-\t-\t{title}\n")
         return "".join(out)
 
     def refresh(self):  # hash what is new or changed; drop what is gone
@@ -132,6 +171,10 @@ def main():
         def do_GET(self):
             if self.path == "/catalog":
                 self.send(200, cat.text().encode())
+            elif self.path.startswith("/app/"):
+                self.send(*cat.app_get(self.path))
+            elif self.path.startswith("/art/"):
+                self.send(*cat.art_get(self.path))
             else:
                 self.send(*cat.vmc_get(self.path))
 
