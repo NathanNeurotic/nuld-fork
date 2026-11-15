@@ -104,7 +104,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr(info, s.replace("\n", "\r\n") if arc.endswith(".txt") else s, zipfile.ZIP_DEFLATED)
 
     add(os.path.join(ROOT, "launcher.elf"), "launcher.elf")
-    overlay = {"neutrino.elf", "modules/ee_core.elf"}  # NULD's fork over the official release
+    overlay = {"neutrino.elf", "modules/ee_core.elf", "modules/udpfs_fhi.irx"}  # NULD's fork over the official release
     for dirpath, _, files in os.walk(ndev):
         for f in files:
             rel = os.path.relpath(os.path.join(dirpath, f), ndev).replace("\\", "/")
