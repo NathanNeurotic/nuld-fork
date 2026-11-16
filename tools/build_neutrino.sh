@@ -1,10 +1,12 @@
 #!/bin/bash
-# Build the NULD fork of Neutrino (base: rickgaiser/neutrino dev 7be8de2) into dist/neutrino/.
+# Build the NULD fork of Neutrino (base: rickgaiser/neutrino dev 1310a9a, SMB and NFS on top of 7be8de2) into
+# dist/neutrino/.
 # usage (from Windows): wsl bash /mnt/d/ps2/ps2-launcher/tools/build_neutrino.sh
 #
 # Rebuilt: the loader (neutrino.elf: -igr / -igroff / -igrexit / -igrmenu / -ra options), modules/ee_core.elf (In
 # Game Reset, in-game menu, achievements telemetry: third_party/neutrino-igr), modules/raagent.irx (phase 16b) and
-# modules/udpfs_fhi.irx (reconnects after a lost link).
+# modules/udpfs_fhi.irx (reconnects after a lost link); from upstream as is, newer than the official release on the USB:
+# modules/ministack.irx (TCP handler for SMB), modules/smb_ioman.irx + smb_fhi.irx and config/bsd-smb.toml (SMB).
 # Every other module stays the official dev release's, already on the USB.
 set -e
 export PS2DEV=/usr/local/ps2dev PS2SDK=/usr/local/ps2dev/ps2sdk GSKIT=/usr/local/ps2dev/gsKit
@@ -12,12 +14,14 @@ export PATH=$PATH:$PS2DEV/bin:$PS2DEV/ee/bin:$PS2DEV/iop/bin:$PS2SDK/bin
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 FORK="$REPO/third_party/neutrino-igr"
 WORK="${WORK:-$HOME/orbit-build}"
-BASE=7be8de2
+BASE=1310a9a
 mkdir -p "$WORK"
 cd "$WORK"
 [ -d neutrino-dev ] || git clone -q https://github.com/rickgaiser/neutrino.git neutrino-dev
 cd neutrino-dev
-git checkout -q -- . && git checkout -q "$BASE" && git clean -qfd ee/ee_core ee/loader common iop/raagent iop/udpfs
+git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch -q origin
+git checkout -q -- . && git checkout -q "$BASE" && git clean -qfd ee/ee_core ee/loader common iop/raagent iop/udpfs iop/smb iop/ministack
+git submodule update -q --init iop/smb/usmb2 # usmb2, the SMB2 client of smb_ioman / smb_fhi
 rm -rf "$WORK/resetspu" && cp -r "$FORK/resetspu" "$WORK/resetspu" # the IGR's SPU2 reset, embedded in ee_core
 make -C "$WORK/resetspu" > "$WORK/resetspu.log" 2>&1 || { tail -20 "$WORK/resetspu.log"; exit 1; }
 bin2c "$WORK/resetspu/resetspu.irx" ee/ee_core/src/resetspu_irx.c resetspu_irx
@@ -38,8 +42,15 @@ make -C iop/raagent > "$WORK/raagent.log" 2>&1 || { tail -20 "$WORK/raagent.log"
 # (--allow-zero-text: its exports.tab defines _retonly before the table, at .text 0, which this ps2sdk's iopfixup
 # refuses by default; the official build's older iopfixup took it as is)
 make -C iop/udpfs UDPFS_FHI=1 IOP_SRXFIXUP_FLAGS="--rb --irx1 --allow-zero-text" >"$WORK/udpfs.log" 2>&1 || { tail -20 "$WORK/udpfs.log"; exit 1; }
-mkdir -p "$REPO/dist/neutrino/modules"
+# SMB (upstream 1310a9a): ministack with the TCP handler, and the share's driver for the loader and for the game
+make -C iop/ministack IOP_SRXFIXUP_FLAGS="--rb --irx1 --allow-zero-text" >"$WORK/ministack.log" 2>&1 || { tail -20 "$WORK/ministack.log"; exit 1; }
+for v in SMB_IOMAN SMB_FHI; do
+    make -C iop/smb $v=1 IOP_SRXFIXUP_FLAGS="--rb --irx1 --allow-zero-text" >"$WORK/smb.log" 2>&1 || { tail -20 "$WORK/smb.log"; exit 1; }
+done
+mkdir -p "$REPO/dist/neutrino/modules" "$REPO/dist/neutrino/config"
 cp ee/loader/neutrino_unpacked.elf "$REPO/dist/neutrino/neutrino.elf"
 cp ee/ee_core/ee_core.elf iop/raagent/irx/raagent.irx iop/udpfs/irx/udpfs_fhi.irx "$REPO/dist/neutrino/modules/"
-ls -la "$REPO/dist/neutrino" "$REPO/dist/neutrino/modules"
+cp iop/ministack/irx/ministack.irx iop/smb/irx/smb_ioman.irx iop/smb/irx/smb_fhi.irx "$REPO/dist/neutrino/modules/"
+cp ee/loader/config/bsd-smb.toml "$REPO/dist/neutrino/config/"
+ls -la "$REPO/dist/neutrino" "$REPO/dist/neutrino/modules" "$REPO/dist/neutrino/config"
 echo "copy dist/neutrino/ over mass0:/neutrino/ (official dev $BASE release)"

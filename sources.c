@@ -29,9 +29,9 @@
 #define IRX(m) extern unsigned char m##_irx[]; extern unsigned int size_##m##_irx
 IRX(ata_bd); IRX(ps2hdd_bdm); IRX(mx4sio_bd_mini); IRX(iLinkman); IRX(IEEE1394_bd_mini); IRX(mmceman);
 
-const char *const src_key[SRC_N] = {"usb", "hdd", "hdl", "mx4sio", "ilink", "mmce", "udpbd", "udpfs"};
-const char *const src_bsd[SRC_N] = {"usb", "ata", "ata", "mx4sio", "ilink", "mmce", "udpbd", "udpfs"};
-const char *const src_label[SRC_N] = {"USB", "HDD", "HDD", "MX4SIO", "ILINK", "MMCE", "UDPBD", "UDPFS"};
+const char *const src_key[SRC_N] = {"usb", "hdd", "hdl", "mx4sio", "ilink", "mmce", "udpbd", "udpfs", "smb"};
+const char *const src_bsd[SRC_N] = {"usb", "ata", "ata", "mx4sio", "ilink", "mmce", "udpbd", "udpfs", "smb"};
+const char *const src_label[SRC_N] = {"USB", "HDD", "HDD", "MX4SIO", "ILINK", "MMCE", "UDPBD", "UDPFS", "SMB"};
 source src[SRC_MAX];
 int nsrc;
 const char *src_err[SRC_N];
@@ -167,6 +167,8 @@ const char *src_init(unsigned mask, const char *ip, const char *ndir, int udpfs_
 		int any = add(SRC_MMCE, "mmce0:", 4);
 		if (!(any |= add(SRC_MMCE, "mmce1:", 0))) FAIL(SRC_MMCE, L("No se encontró ningún MMCE", "No MMCE found"));
 	} else if (mask & 1u << SRC_MMCE) FAIL(SRC_MMCE, L("No se pudo cargar el driver del MMCE", "Could not load the MMCE driver"));
+	if (mask & 1u << SRC_SMB && nsrc < SRC_MAX) // #6: listed by the loader thread with libsmb2 (smb.c), not mounted
+		src[nsrc].type = SRC_SMB, src[nsrc].unit = 0, strcpy(src[nsrc].root, "smb:"), nsrc++;
 	if (mask & 1u << SRC_UDPFS && !udpfs_mount && nsrc < SRC_MAX) // phase 17: listed from the server's catalog
 		src[nsrc].type = SRC_UDPFS, src[nsrc].unit = 0, strcpy(src[nsrc].root, "udpfs:"), nsrc++;
 	// Neutrino's smap + ministack, shared by udpbd and a mounted udpfs (any udpfs server, as nhddl: #10)

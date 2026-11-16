@@ -104,7 +104,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr(info, s.replace("\n", "\r\n") if arc.endswith(".txt") else s, zipfile.ZIP_DEFLATED)
 
     add(os.path.join(ROOT, "launcher.elf"), "launcher.elf")
-    overlay = {"neutrino.elf", "modules/ee_core.elf", "modules/udpfs_fhi.irx"}  # NULD's fork over the official release
+    overlay = {"neutrino.elf", "modules/ee_core.elf", "modules/udpfs_fhi.irx", "modules/ministack.irx"}  # NULD's fork over the official release
     for dirpath, _, files in os.walk(ndev):
         for f in files:
             rel = os.path.relpath(os.path.join(dirpath, f), ndev).replace("\\", "/")
@@ -112,6 +112,9 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
                 continue
             add(os.path.join(ROOT, "dist", "neutrino", rel) if rel in overlay else os.path.join(dirpath, f), "neutrino/" + rel)
     add(os.path.join(ROOT, "dist", "neutrino", "modules", "raagent.irx"), "neutrino/modules/raagent.irx")
+    for m in ("smb_ioman.irx", "smb_fhi.irx"):  # SMB (#6): upstream 1310a9a, newer than the official release
+        add(os.path.join(ROOT, "dist", "neutrino", "modules", m), "neutrino/modules/" + m)
+    add(os.path.join(ROOT, "dist", "neutrino", "config", "bsd-smb.toml"), "neutrino/config/bsd-smb.toml")
     add(os.path.join(ROOT, "third_party", "neutrino-igr", "LICENSE"), "neutrino/LICENSE")
     text("DVD/put your PS2 DVD ISOs here.txt", "")
     text("CD/put your PS2 CD ISOs here.txt", "")

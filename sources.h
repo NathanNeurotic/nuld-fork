@@ -1,6 +1,6 @@
 #pragma once
 // Game sources (phase 14): where PS2 ISOs are looked for besides the launcher's USB.
-enum { SRC_USB, SRC_HDD, SRC_HDL, SRC_MX4SIO, SRC_ILINK, SRC_MMCE, SRC_UDPBD, SRC_UDPFS, SRC_N };
+enum { SRC_USB, SRC_HDD, SRC_HDL, SRC_MX4SIO, SRC_ILINK, SRC_MMCE, SRC_UDPBD, SRC_UDPFS, SRC_SMB, SRC_N }; // SMB: #6
 #define SRC_MAX 8
 typedef struct { char type, unit; char root[10]; } source; // root: "mass0:", "ata0:", "mmce1:", "hdd0:"; "udpfs:" is not mounted (phase 17: the catalog)
 extern source src[SRC_MAX];
