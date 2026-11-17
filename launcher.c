@@ -847,6 +847,8 @@ static const char *const config_template[LANG_N] = {
 	"; y APPS siguen en la USB.\norigen = usb\n"
 	"; udpfs: IP del servidor de juegos con nuld_catalog (da la lista; portadas y logros siguen). Vacío = cualquier\n"
 	"; servidor udpfs de la red (Server2PS2...), con la IP fija de [red], sin portadas ni logros por red\nservidor =\n"
+	"; si = el logo de PlayStation 2 antes de cada juego, como con un disco (unos segundos más). Un juego de otra\n"
+	"; región que la consola (PAL en NTSC o al revés) puede no arrancar así: déjalo en no\nlogo = no\n"
 	"\n[smb]\n; smb: recurso compartido SMB2 (Windows, NAS, Samba) con carpetas DVD y CD: servidor = su IP, recurso = su\n"
 	"; nombre. Solo lectura: esos juegos usan la memory card física. La PS2 usa la IP de [red] (o la de DHCP)\n"
 	"servidor =\nrecurso = PS2SMB\nusuario = guest\nclave =\n"
@@ -885,6 +887,8 @@ static const char *const config_template[LANG_N] = {
 	"; and APPS stay on the USB.\norigen = usb\n"
 	"; udpfs: IP of the game server running nuld_catalog (lists the games; covers and achievements keep working).\n"
 	"; Empty = any udpfs server on the network (Server2PS2...), with the fixed IP of [red], no online covers/achievements\nservidor =\n"
+	"; si = the PlayStation 2 logo before each game, as with a disc (a few seconds more). A game from another\n"
+	"; region than the console (PAL on NTSC or the reverse) may not start this way: keep it at no\nlogo = no\n"
 	"\n[smb]\n; smb: an SMB2 share (Windows, NAS, Samba) with DVD and CD folders: servidor = its IP, recurso = the share's\n"
 	"; name, usuario / clave = user / password. Read-only: those games use the physical memory card. The PS2 uses the\n"
 	"; IP of [red] (or the DHCP one)\nservidor =\nrecurso = PS2SMB\nusuario = guest\nclave =\n"
@@ -923,6 +927,8 @@ static const char *const config_template[LANG_N] = {
 	"; e APPS ficam na USB.\norigen = usb\n"
 	"; udpfs: IP do servidor de jogos com nuld_catalog (dá a lista; capas e conquistas continuam). Vazio = qualquer\n"
 	"; servidor udpfs da rede (Server2PS2...), com o IP fixo de [red], sem capas nem conquistas pela rede\nservidor =\n"
+	"; si = o logo do PlayStation 2 antes de cada jogo, como com um disco (alguns segundos a mais). Um jogo de outra\n"
+	"; região que o console (PAL em NTSC ou o contrário) pode não iniciar assim: deixe em no\nlogo = no\n"
 	"\n[smb]\n; smb: compartilhamento SMB2 (Windows, NAS, Samba) com pastas DVD e CD: servidor = seu IP, recurso = o nome\n"
 	"; do compartilhamento, usuario / clave = usuário / senha. Somente leitura: esses jogos usam o memory card físico.\n"
 	"; O PS2 usa o IP de [red] (ou o do DHCP)\nservidor =\nrecurso = PS2SMB\nusuario = guest\nclave =\n"
@@ -2525,6 +2531,7 @@ static void launch(int i) // per kind (phase 11): Neutrino, POPStarter, an app E
 	if (neutrino_igr && igr_off) snprintf(igr[1], sizeof(igr[1]), "-igroff=0x%04x", igr_off), argv[argc++] = igr[1];
 	if (neutrino_lang && neutrino_menu && igr_menu && lang) argv[argc++] = lang == LANG_EN ? "-igrlang=en" : "-igrlang=pt"; // phase 18
 	if (ra) argv[argc++] = "-cfg=ra", argv[argc++] = ra_arg; // phase 16b: the achievements agent and its watch list
+	if (!strcasecmp(ini_get(&cfg, "juegos", "logo", "no"), "si")) argv[argc++] = "-logo"; // Neutrino runs the game through rom0:PS2LOGO
 	// HD Loader needs Neutrino's own load stage (hdlfs; nhddl neutrino.c); so do nuld games, whose network stack is
 	// Neutrino's own (the launcher's lwIP is shut down, phase 17)
 	if (st != SRC_HDL && st != SRC_UDPFS && st != SRC_SMB) argv[argc++] = "-qb"; // SMB: Neutrino's own network too
