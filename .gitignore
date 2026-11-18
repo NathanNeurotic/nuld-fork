@@ -12,4 +12,3 @@ dist/
 boot_elf.c
 nuld_hash
 *.d
-*.a

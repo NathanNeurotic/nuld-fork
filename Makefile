@@ -8,17 +8,13 @@ SFX = splash move edge confirm panel # sfx/*.wav from tools/sfx.py -> SPU2 ADPCM
 EE_BIN = $(APP).elf
 IRX_FILES = iomanX fileXio sio2man mcman mcserv freepad libsd audsrv bdm bdmfs_fatfs usbd_mini usbmass_bd_mini $(if $(filter launcher,$(APP)),ps2dev9 netman smap ata_bd ps2hdd_bdm mx4sio_bd_mini iLinkman IEEE1394_bd_mini mmceman)
 # launcher extras: network for cover downloads (net.c); game sources, loaded per config.ini (sources.c, phase 14)
-EE_OBJS = $(APP).o $(if $(filter launcher,$(APP)),layout_pad.o) iop.o $(if $(filter launcher,$(APP)),gfx.o splash.o logo_data.o iso.o ini.o lang_pt.o smb_pad.o net.o fmcb.o update.o achievements.o sources.o vmc.o cover.o icon.o combo.o font_data.o ui_data.o exec.o loader_elf.o boot_elf.o $(SFX:%=sfx_%.o)) $(if $(filter boot,$(APP)),exec.o loader_elf.o) $(IRX_FILES:=_irx.o)
-EE_LIBS = $(if $(filter launcher,$(APP)),-L$(PS2SDK)/ports/lib -lwolfssl -ljpeg -lpng -lz -lnetman -lps2ip -Xlinker --wrap=open -Xlinker --wrap=read) $(if $(filter boot,$(APP)),-ldebug) -laudsrv -lcdvd -lmc -lfont -lpacket -ldma -lgraph -ldraw -lpad -lfileXio -lpatches -lc $(if $(filter launcher,$(APP)),-L. -lnuldsmb -lsmb2) # SMB last: smb_pad.c
+EE_OBJS = $(APP).o iop.o $(if $(filter launcher,$(APP)),gfx.o splash.o logo_data.o iso.o ini.o lang_pt.o smb.o net.o fmcb.o update.o achievements.o sources.o vmc.o cover.o icon.o combo.o font_data.o ui_data.o exec.o loader_elf.o boot_elf.o $(SFX:%=sfx_%.o)) $(if $(filter boot,$(APP)),exec.o loader_elf.o) $(IRX_FILES:=_irx.o)
+EE_LIBS = $(if $(filter launcher,$(APP)),-L$(PS2SDK)/ports/lib -lwolfssl -lsmb2 -ljpeg -lpng -lz -lnetman -lps2ip -Xlinker --wrap=open -Xlinker --wrap=read) $(if $(filter boot,$(APP)),-ldebug) -laudsrv -lcdvd -lmc -lfont -lpacket -ldma -lgraph -ldraw -lpad -lfileXio -lpatches -lc
 EE_INCS += -I$(PS2SDK)/ports/include # wolfssl, jpeglib (ps2sdk ports)
 EE_CFLAGS += -MMD -MP # .d files: editing a header rebuilds its users (v1.0 shipped a stale gfx.o)
 
 all: $(EE_BIN)
 	$(EE_STRIP) --strip-all $(EE_BIN)
-
-$(EE_BIN): $(if $(filter launcher,$(APP)),libnuldsmb.a)
-libnuldsmb.a: smb.o # smb.c with libsmb2 at the end of the link (smb_pad.c says why)
-	rm -f $@ && $(EE_AR) rcs $@ $^
 
 sfx_%.c: sfx/%.wav
 	$(PS2SDK)/bin/adpenc $< sfx_$*.adp && $(PS2SDK)/bin/bin2c sfx_$*.adp $@ sfx_$*
@@ -57,7 +53,7 @@ nuld_hash: tools/nuld_hash.c achievements.c iso.c vmc.c # the game server's help
 	cc -std=gnu99 -O2 -Wall -Wno-deprecated-declarations -DSELFTEST -DSELFTEST_LIB -DNULD_HASH -static $^ -lcrypto -lpthread -o $@
 
 clean:
-	rm -f *.elf *.o *.d *.a *_irx.c sfx_*.c *.adp loader_elf.c boot_elf.c nuld_hash
+	rm -f *.elf *.o *.d *_irx.c sfx_*.c *.adp loader_elf.c boot_elf.c nuld_hash
 	$(MAKE) -C loader clean
 
 include $(PS2SDK)/samples/Makefile.pref
