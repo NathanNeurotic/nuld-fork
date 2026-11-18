@@ -7,6 +7,7 @@ on:
       - achievements.h
       - launcher.c
       - third_party/neutrino-igr/**
+      - tools/build_neutrino.sh
       - tests/**
       - .github/workflows/ra-protocol.yml
   pull_request:
@@ -15,6 +16,7 @@ on:
       - achievements.h
       - launcher.c
       - third_party/neutrino-igr/**
+      - tools/build_neutrino.sh
       - tests/**
       - .github/workflows/ra-protocol.yml
   workflow_dispatch:
@@ -46,3 +48,22 @@ jobs:
       - name: Apply the entire NULD patch to the pinned Neutrino source
         working-directory: neutrino-base
         run: python3 ../third_party/neutrino-igr/patch_neutrino.py
+
+  neutrino-cross-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile patched Neutrino EE and IOP modules with ps2dev
+        run: |
+          docker run --rm --volume "$GITHUB_WORKSPACE:/src" --workdir /src \
+            ghcr.io/ps2dev/ps2dev:v2.0.0 \
+            sh -c 'bash tools/build_neutrino.sh'
+      - name: Validate produced Neutrino payloads
+        run: |
+          test -s dist/neutrino/neutrino.elf
+          test -s dist/neutrino/modules/ee_core.elf
+          test -s dist/neutrino/modules/raagent.irx
+          test -s dist/neutrino/modules/udpfs_fhi.irx
