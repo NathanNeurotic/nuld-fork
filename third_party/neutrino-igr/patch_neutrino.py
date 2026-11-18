@@ -18,7 +18,10 @@ edit("common/include/eecore_config.h",
      "    uint16_t IgrExitCombo;\n    uint16_t IgrOffCombo;\n    char IgrExitPath[64];\n"
      "    uint16_t IgrMenuCombo; // phase 13: opens the in-game menu\n"
      "    // ORBIT phase 16b: achievements telemetry (ra.c), the watch block in module storage; RaMbox NULL = off\n"
-     "    uint32_t *RaWatch;\n    uint32_t RaCount;\n    uint32_t RaBytes;\n    uint8_t *RaMbox;\n"
+     "    uint32_t *RaWatch;\n    uint32_t RaCount;\n    uint32_t RaBytes;\n"
+     "    // xeRAbora 2.1 RAN2/RANL chains are normalized in protected module storage.\n"
+     "    uint32_t *RaNodeList;\n    uint32_t RaNodeCount;\n    uint32_t *RaNodeWork;\n"
+     "    uint8_t *RaMbox;\n"
      "    // NULD phase 19: titles for the unlock notice, EEC_RA_TITLE bytes each (u32 id, title + NUL)\n"
      "    uint8_t *RaTitles;\n    uint32_t RaTitleCount;\n"
      "    // ORBIT phase 18: the in-game menu's language\n"
@@ -196,7 +199,7 @@ edit(L, '    printf("  -igrmenu=<mask>   ORBIT: libpad button mask that opens th
      '    printf("  -igrmenu=<mask>   ORBIT: libpad button mask that opens the in-game menu\\n");\n'
      '    printf("  -ra=<file>        ORBIT: RetroAchievements watch list for raagent.irx (phase 16b)\\n");\n'
      '    printf("  -igrlang=<es|en|pt>  ORBIT: language of the in-game menu (phase 18)\\n");\n')
-edit(L, "static int parse_cmdline_args(int argc, char *argv[], int *out_iELFArgcStart)\n", r'''#include "../../../common/include/ra_snap.h"
+edit(L, "static int parse_cmdline_args(int argc, char *argv[], int *out_iELFArgcStart)\n", r'''#include "../../../common/include/ra_wl_parse.h"
 // ORBIT phase 17: the watch list file is read while the boot environment's devices are still there (before the IOP
 // reboot into the load environment: without -qb, a nuld game, mass0: is gone by ra_place). Heap, not BSS: a 16 KB
 // static array in this loader broke every launch (phase 16b)
@@ -205,7 +208,7 @@ static int ra_file_len;
 static void ra_read(const char *path)
 {
     int fd = open(path, O_RDONLY), n = fd < 0 ? -1 : lseek(fd, 0, SEEK_END);
-    if (n > 0 && n <= 16 + 4 * RA_WATCH_MAX + 8 + 8 * RA_NODE_MAX + 128 * EEC_RA_TITLE + 8 && (ra_file = malloc(n)) != NULL) {
+    if (n > 0 && n <= NULD_RA_FILE_MAX && (ra_file = malloc(n)) != NULL) {
         lseek(fd, 0, SEEK_SET);
         ra_file_len = read(fd, ra_file, n);
     }
