@@ -160,32 +160,42 @@ static void mbox_write(void)
 static void agent_thread(void *arg)
 {
     const volatile struct ra_snap *s = (const volatile struct ra_snap *)snap;
-    uint32_t last = 0, tick = 0;
+    uint32_t last = 0, tick = 0, announce_period = ~0u;
     char t[64];
     (void)arg;
-    udp_packet_init((udp_packet_t *)&pkt, srv_ip, CLIENT_PORT); // ARP for the client's MAC: a thread may wait
+    udp_packet_init((udp_packet_t *)&pkt, srv_ip, CLIENT_PORT);
     uint32_t note_sent = 0;
-    mbox_write(); // tell ee_core where to DMA the snapshots
-    for (;; DelayThread(4000), tick++) { // 4 ms: catches every 16.7 ms snapshot once (raudp's RA_POLL_US)
-        if (note_n != note_sent) // phase 19: an unlock for ee_core to show
-            note_sent = note_n, mbox_write();
+    mbox_write(); // EE now knows the correctly sized DMA buffer
+    for (;; DelayThread(4000), tick++) {
+        if (note_n != note_sent)
+            note_sent = note_n, mbox_write(); // existing RAU1 notices
         if (!answered) {
-            if (tick % 250 == 0) // once a second until the client answers
+            if (tick % 250 == 0)
                 sprintf(t, "RAP1 %s %d", me, AGENT_PORT), send_text(t);
             continue;
         }
-        if (tick % 2500 == 0) // ten seconds
-            // the badge fields (unused, PROTOCOL.md) carry the agent's view, logged by the client: the snapshot
-            // sequence in its buffer, the buffer's magic, the EE mailbox (0 = the loader placed no watch block)
-            sprintf(t, "RAH1 %u %u %06u %08x %x", (unsigned)rx, (unsigned)note_n, (unsigned)(s->seq % 1000000), (unsigned)s->magic,
+        if (tick % 2500 == 0)
+            sprintf(t, "RAH1 %u %u %06u %08x %x", (unsigned)rx, (unsigned)note_n,
+                    (unsigned)(s->seq % 1000000), (unsigned)s->magic,
                     (unsigned)mbox), send_text(t);
+        // An image hash from RAH1 permits a second PC to identify a running
+        // game without having performed NULD's original support check.
+        if (image_hash[0] && s->magic == RA_SNAP_MAGIC &&
+            s->frames / 60 != announce_period) {
+            char serial[16];
+            memcpy(serial, (const void *)s->game_id, 15);
+            serial[15] = 0;
+            announce_period = s->frames / 60;
+            sprintf(t, "RAI1 %.15s %s", serial, image_hash);
+            send_text(t);
+        }
         if (s->magic != RA_SNAP_MAGIC || s->seq == last)
             continue;
         uint32_t sq = s->seq, nb = s->bytes;
-        if (nb > AGENT_BYTES)
+        if (nb == 0 || nb > snap_capacity || nb > RA_SNAP_MAX_BYTES)
             continue;
         memcpy(stage, snap + RA_SNAP_HDR, nb);
-        if (*(volatile uint32_t *)(snap + RA_SNAP_TRAILER_OFF(nb)) != sq || s->seq != sq) { // overwritten mid-copy
+        if (*(volatile uint32_t *)(snap + RA_SNAP_TRAILER_OFF(nb)) != sq || s->seq != sq) {
             torn++;
             continue;
         }
@@ -194,9 +204,21 @@ static void agent_thread(void *arg)
     }
 }
 
+static int valid_hash(const char *s)
+{
+    int i;
+    for (i = 0; i < RA_HASH_LEN; i++) {
+        char c = s[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+              (c >= 'A' && c <= 'F'))) return 0;
+    }
+    return s[RA_HASH_LEN] == 0;
+}
+
 int _start(int argc, char *argv[])
 {
     iop_thread_t th;
+    uint32_t requested = AGENT_BYTES;
     int i;
     for (i = 1; i < argc; i++)
         if (!strncmp(argv[i], "srv=", 4))
@@ -205,7 +227,31 @@ int _start(int argc, char *argv[])
             strncpy(me, argv[i] + 3, sizeof(me) - 1);
         else if (!strncmp(argv[i], "mbox=", 5))
             mbox = strtoul(argv[i] + 5, NULL, 16);
-    printf("raagent: client %08x, me %s, mailbox %08x, buffer %p\n", (unsigned)srv_ip, me, (unsigned)mbox, snap);
+        else if (!strncmp(argv[i], "size=", 5))
+            requested = strtoul(argv[i] + 5, NULL, 10);
+        else if (!strncmp(argv[i], "hash=", 5) &&
+                 strlen(argv[i] + 5) == RA_HASH_LEN && valid_hash(argv[i] + 5))
+            memcpy(image_hash, argv[i] + 5, RA_HASH_LEN + 1);
+
+    if (!requested || requested > RA_SNAP_MAX_BYTES)
+        return MODULE_NO_RESIDENT_END;
+    if (requested > AGENT_BYTES) {
+        // Allocate only when needed. Existing one-packet sets keep the
+        // proven ~2.5 KiB IOP footprint; failed large allocations disarm RA.
+        large_snap = AllocSysMemory(ALLOC_FIRST, RA_SNAP_TOTAL_FOR(requested) + 63, NULL);
+        large_stage = AllocSysMemory(ALLOC_FIRST, requested, NULL);
+        if (!large_snap || !large_stage) {
+            if (large_snap) FreeSysMemory(large_snap);
+            if (large_stage) FreeSysMemory(large_stage);
+            return MODULE_NO_RESIDENT_END;
+        }
+        snap = (uint8_t *)(((uint32_t)large_snap + 63u) & ~63u);
+        stage = (uint8_t *)large_stage;
+        snap_capacity = requested;
+        memset(snap, 0, RA_SNAP_TOTAL_FOR(requested));
+    }
+    printf("raagent: client %08x, me %s, mailbox %08x, buffer %p, %u bytes\n",
+           (unsigned)srv_ip, me, (unsigned)mbox, snap, (unsigned)snap_capacity);
     if (srv_ip == 0 || (sock = udp_bind(AGENT_PORT, rx_handler, NULL)) == NULL)
         return MODULE_NO_RESIDENT_END;
     th.attr = TH_C;
