@@ -20,6 +20,7 @@ extern int isceSifDmaStat(int trid);
 #define RA_START_DELAY 600
 #define RA_RAM_LOW  0x00080000u
 #define RA_RAM_HIGH 0x02000000u
+#define RA_SCRATCH_HIGH 0x02004000u // xeRAbora maps 16 KiB at RAM end into 0x70000000
 
 static u32 frames, seq, skip, fail, last_ticks, note_seen;
 u32 ra_note_id, ra_note_points;
@@ -40,12 +41,21 @@ static inline void ra_put_le(u8 *p, u32 v)
     p[2] = (u8)(v >> 16); p[3] = (u8)(v >> 24);
 }
 
-/* Treat invalid PS2 addresses as zeros. A read below 0x80000 can TLB-miss
-   in the uncached mirror and lock the console from within this IRQ. */
-static inline int ra_in_ram(u32 addr, u32 size)
+/* Ordinary RAM is readable through its uncached mirror. xeRAbora 2.1
+   also watches 16 KiB of PS2 scratchpad (logical 0x02000000..0x02003fff),
+   whose CPU address is 0x70000000; never OR it with UNCACHED_SEG. */
+static inline int ra_readable(u32 addr, u32 size)
 {
-    return size && addr >= RA_RAM_LOW && addr < RA_RAM_HIGH &&
-           size <= RA_RAM_HIGH - addr;
+    return size && ((addr >= RA_RAM_LOW && addr < RA_RAM_HIGH &&
+                     size <= RA_RAM_HIGH - addr) ||
+                    (addr >= RA_RAM_HIGH && addr < RA_SCRATCH_HIGH &&
+                     size <= RA_SCRATCH_HIGH - addr));
+}
+static inline volatile u8 *ra_source(u32 addr)
+{
+    if (addr >= RA_RAM_HIGH)
+        return (volatile u8 *)(0x70000000u + addr - RA_RAM_HIGH);
+    return (volatile u8 *)UNCACHED_SEG(addr);
 }
 
 int RA_OnVblank(void)
@@ -104,18 +114,18 @@ int RA_OnVblank(void)
         u32 e = eec.RaWatch[i], addr = RA_WATCH_ADDR(e), z = RA_WATCH_SIZE(e);
         if ((z != 1 && z != 2 && z != 4) || z > direct - off)
             return 0;
-        if (!ra_in_ram(addr, z)) {
+        if (!ra_readable(addr, z)) {
             for (j = 0; j < z; j++) v[off++] = 0;
         } else if (z == 4 && !(addr & 3)) {
-            u32 x = *(volatile u32 *)UNCACHED_SEG(addr);
+            u32 x = *(volatile u32 *)ra_source(addr);
             v[off++] = x; v[off++] = x >> 8;
             v[off++] = x >> 16; v[off++] = x >> 24;
         } else if (z == 2 && !(addr & 1)) {
-            u16 x = *(volatile u16 *)UNCACHED_SEG(addr);
+            u16 x = *(volatile u16 *)ra_source(addr);
             v[off++] = x; v[off++] = x >> 8;
         } else {
             for (j = 0; j < z; j++)
-                v[off++] = *(volatile u8 *)UNCACHED_SEG(addr + j);
+                v[off++] = *ra_source(addr + j);
         }
     }
     if (off != direct)
@@ -151,11 +161,11 @@ int RA_OnVblank(void)
             base >>= RA_NODE_SHIFT(w);
             if (width && width < 32) base &= (1u << width) - 1;
             addr = (base * nodes[i].scale + nodes[i].offset) & 0x1FFFFFFFu;
-            if (!ra_in_ram(addr, z))
+            if (!ra_readable(addr, z))
                 addr = 0;
             else
                 for (j = 0; j < z; j++)
-                    value |= (u32)(*(volatile u8 *)UNCACHED_SEG(addr + j)) << (j * 8);
+                    value |= (u32)(*ra_source(addr + j)) << (j * 8);
         }
         work[i * 2] = value;
         ra_put_le(&v[off], addr);
