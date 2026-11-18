@@ -8,7 +8,7 @@ SFX = splash move edge confirm panel # sfx/*.wav from tools/sfx.py -> SPU2 ADPCM
 EE_BIN = $(APP).elf
 IRX_FILES = iomanX fileXio sio2man mcman mcserv freepad libsd audsrv bdm bdmfs_fatfs usbd_mini usbmass_bd_mini $(if $(filter launcher,$(APP)),ps2dev9 netman smap ata_bd ps2hdd_bdm mx4sio_bd_mini iLinkman IEEE1394_bd_mini mmceman)
 # launcher extras: network for cover downloads (net.c); game sources, loaded per config.ini (sources.c, phase 14)
-EE_OBJS = $(APP).o iop.o $(if $(filter launcher,$(APP)),gfx.o splash.o logo_data.o iso.o ini.o net.o fmcb.o update.o achievements.o sources.o vmc.o cover.o icon.o combo.o font_data.o ui_data.o exec.o loader_elf.o boot_elf.o $(SFX:%=sfx_%.o)) $(if $(filter boot,$(APP)),exec.o loader_elf.o) $(IRX_FILES:=_irx.o)
+EE_OBJS = $(APP).o iop.o $(if $(filter launcher,$(APP)),gfx.o splash.o logo_data.o iso.o ini.o lang_pt.o net.o fmcb.o update.o achievements.o sources.o vmc.o cover.o icon.o combo.o font_data.o ui_data.o exec.o loader_elf.o boot_elf.o $(SFX:%=sfx_%.o)) $(if $(filter boot,$(APP)),exec.o loader_elf.o) $(IRX_FILES:=_irx.o)
 EE_LIBS = $(if $(filter launcher,$(APP)),-L$(PS2SDK)/ports/lib -lwolfssl -ljpeg -lpng -lz -lnetman -lps2ip -Xlinker --wrap=open -Xlinker --wrap=read) $(if $(filter boot,$(APP)),-ldebug) -laudsrv -lcdvd -lmc -lfont -lpacket -ldma -lgraph -ldraw -lpad -lfileXio -lpatches -lc
 EE_INCS += -I$(PS2SDK)/ports/include # wolfssl, jpeglib (ps2sdk ports)
 EE_CFLAGS += -MMD -MP # .d files: editing a header rebuilds its users (v1.0 shipped a stale gfx.o)
@@ -35,6 +35,7 @@ ps2hdd_bdm_irx.c: # the file name has a dash, the C symbol cannot
 	$(PS2SDK)/bin/bin2c $(PS2SDK)/iop/irx/$*.irx $@ $*_irx
 
 test:
+	python3 tools/lang_check.py # every English text has its Portuguese one (lang_pt.c)
 	cc -std=c99 -Wall -DSELFTEST bench.c -o /tmp/bench_selftest && /tmp/bench_selftest
 	cc -std=c99 -Wall -DSELFTEST gfx.c font_data.c -o /tmp/gfx_selftest && /tmp/gfx_selftest
 	cc -std=gnu99 -Wall -DSELFTEST iso.c -o /tmp/iso_selftest && /tmp/iso_selftest

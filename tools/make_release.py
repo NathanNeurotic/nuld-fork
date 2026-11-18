@@ -26,7 +26,7 @@ circle achievements, X play, SELECT data overlay.
 In a game: L1+L2+R1+R2+START+SELECT opens the menu (restart, power off).
 
 Optional
-- English: in config.ini set  [ui] idioma = en  (Spanish is the default).
+- English / Português: in config.ini set  [ui] idioma = en  or  idioma = pt  (Spanish is the default).
 - Covers: plug in the network cable; the missing ones download at boot.
   Your own: tools/covers.py turns PNG/JPG files named by serial (SLUS-21376.png) into the .c16 pair for
   mass0:/covers/ (python3 covers.py IN_DIR OUT_DIR; needs numpy and Pillow).

@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 FONTS = ROOT / "tools" / "fonts"
 ASCII = "".join(chr(c) for c in range(32, 127))
-BASE = "áéíóúñÁÉÍÓÚÑü¿¡·"                         # Spanish UI text, in every font
+BASE = "áéíóúñÁÉÍÓÚÑü¿¡·ãõçâêôàÃÕÇÂÊÔÀ"          # Spanish and Portuguese UI text, in every font
 # the other Latin-1 letters and French oe / quotes, for subtitles: only the ui font bakes them (the atlas has no room
 # for three sizes: 12 pages and ~6 KB of VRAM left), the others draw FALLBACK (the ASCII base) instead
 MORE = "".join(chr(c) for c in range(0xC0, 0x100) if c not in (0xD7, 0xF7) and chr(c) not in BASE) + "\u0153\u0152\u00ab\u00bb\u00b0\u00ba\u00aa"
