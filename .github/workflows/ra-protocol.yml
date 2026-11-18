@@ -1,0 +1,34 @@
+name: RA protocol host tests
+
+on:
+  push:
+    paths:
+      - achievements.c
+      - achievements.h
+      - launcher.c
+      - third_party/neutrino-igr/**
+      - tests/**
+      - .github/workflows/ra-protocol.yml
+  pull_request:
+    paths:
+      - achievements.c
+      - achievements.h
+      - launcher.c
+      - third_party/neutrino-igr/**
+      - tests/**
+      - .github/workflows/ra-protocol.yml
+  workflow_dispatch:
+
+jobs:
+  watch-list-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the xeRAbora watch-list parser and trailer bounds
+        run: |
+          cc -std=c99 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer tests/test_ra_wire.c -o /tmp/nuld_ra_wire
+          /tmp/nuld_ra_wire
+      - name: Check launcher achievements regression tests
+        run: |
+          cc -std=gnu99 -Wall -Wno-deprecated-declarations -DSELFTEST achievements.c iso.c -DSELFTEST_LIB -lcrypto -o /tmp/nuld_achievements_test
+          /tmp/nuld_achievements_test
