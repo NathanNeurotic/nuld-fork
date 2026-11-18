@@ -325,9 +325,12 @@ edit(L, "    uint8_t *irxptr_end = build_irx_table(sDVDFile != NULL);\n",
      "    if (ra_path != NULL) // ORBIT phase 16b: room for the mailbox address in the agent's arguments\n"
      "        for (i = 0; i < drv.mod.count; i++)\n"
      "            if (drv.mod.mod[i].args != NULL && !strcmp(drv.mod.mod[i].sFileName, \"raagent.irx\") &&\n"
-     "                drv.mod.mod[i].arg_len + 14 <= 256) {\n"
-     "                strcpy(drv.mod.mod[i].args + drv.mod.mod[i].arg_len, \"mbox=00000000\");\n"
-     "                drv.mod.mod[i].arg_len += 14;\n"
+     "                drv.mod.mod[i].arg_len + 63 <= 256) {\n"
+     "                char *a = drv.mod.mod[i].args + drv.mod.mod[i].arg_len;\n"
+     "                strcpy(a, \"mbox=00000000\"); a += 14;\n"
+     "                strcpy(a, \"size=00000\"); a += 11;\n"
+     "                strcpy(a, \"hash=................................\");\n"
+     "                drv.mod.mod[i].arg_len += 63;\n"
      "            }\n"
      "    uint8_t *irxptr_end = build_irx_table(sDVDFile != NULL);\n")
 edit(L, "    mod_ee_core.sFileName = sys.eecore_elf;\n",
