@@ -270,8 +270,8 @@ static uint8_t *ra_place(const char *path, irxtab_t *tab, uint8_t *end)
                 unsigned parent = RA_NODE_PARENT(node.w);
                 uint32_t e = list[parent], addr = RA_WATCH_ADDR(e);
                 unsigned z = RA_WATCH_SIZE(e), off = 0;
-                if (addr >= 0x00080000u && addr < 0x02000000u &&
-                    z <= 0x02000000u - addr) {
+                if ((addr >= 0x00080000u && addr < 0x02000000u && z <= 0x02000000u - addr) ||
+                    (addr >= 0x02000000u && addr < 0x02004000u && z <= 0x02004000u - addr)) {
                     for (j = 0; j < parent; j++)
                         off += RA_WATCH_SIZE(list[j]);
                     work[i * 2 + 1] = (off << 4) | z;
