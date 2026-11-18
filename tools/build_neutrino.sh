@@ -12,10 +12,10 @@ export PATH=$PATH:$PS2DEV/bin:$PS2DEV/ee/bin:$PS2DEV/iop/bin:$PS2SDK/bin
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 FORK="$REPO/third_party/neutrino-igr"
 WORK="${WORK:-$HOME/orbit-build}"
-BASE=7be8de2
+BASE=7be8de2798c99af433c91993e021746a54d6800d
 mkdir -p "$WORK"
 cd "$WORK"
-[ -d neutrino-dev ] || git clone -q https://github.com/rickgaiser/neutrino.git neutrino-dev
+[ -d neutrino-dev ] || git clone -q https://github.com/ps2max32/neutrino.git neutrino-dev
 cd neutrino-dev
 git checkout -q -- . && git checkout -q "$BASE" && git clean -qfd ee/ee_core ee/loader common iop/raagent iop/udpfs
 rm -rf "$WORK/resetspu" && cp -r "$FORK/resetspu" "$WORK/resetspu" # the IGR's SPU2 reset, embedded in ee_core
