@@ -17,9 +17,6 @@ FILES = [  # asset, path on the USB, built file
     ("ee_core.elf", "neutrino/modules/ee_core.elf", "dist/neutrino/modules/ee_core.elf"),
     ("raagent.irx", "neutrino/modules/raagent.irx", "dist/neutrino/modules/raagent.irx"),
     ("udpfs_fhi.irx", "neutrino/modules/udpfs_fhi.irx", "dist/neutrino/modules/udpfs_fhi.irx"),  # reconnects
-    ("ministack.irx", "neutrino/modules/ministack.irx", "dist/neutrino/modules/ministack.irx"),  # SMB's TCP handler
-    ("smb_ioman.irx", "neutrino/modules/smb_ioman.irx", "dist/neutrino/modules/smb_ioman.irx"),  # SMB (#6)
-    ("smb_fhi.irx", "neutrino/modules/smb_fhi.irx", "dist/neutrino/modules/smb_fhi.irx"),
 ]
 KEY_HOST, KEY = "nuld", "~/.orbit/update-key.pem"
 
