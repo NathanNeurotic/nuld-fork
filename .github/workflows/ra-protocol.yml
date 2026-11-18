@@ -39,8 +39,8 @@ jobs:
       - name: Fetch the pinned official Neutrino source
         uses: actions/checkout@v4
         with:
-          repository: rickgaiser/neutrino
-          ref: 7be8de2
+          repository: ps2max32/neutrino
+          ref: 7be8de2798c99af433c91993e021746a54d6800d
           path: neutrino-base
           persist-credentials: false
       - name: Apply the entire NULD patch to the pinned Neutrino source
