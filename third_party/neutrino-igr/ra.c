@@ -135,7 +135,7 @@ int RA_OnVblank(void)
     // means unresolved; a resolved value of zero is still valid.
     for (i = 0; i < node_count; i++) {
         const struct ra_node *nodes = (const struct ra_node *)eec.RaNodeList;
-        u32 *work = eec.RaNodeWork;
+        uint32_t *work = eec.RaNodeWork;
         u32 w = nodes[i].w, parent = RA_NODE_PARENT(w);
         u32 z = RA_NODE_SIZE(w), base = 0, addr = 0, value = 0;
         int valid = z == 1 || z == 2 || z == 4;
